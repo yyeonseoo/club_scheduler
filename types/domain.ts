@@ -1,4 +1,4 @@
-export type Role = "SUPER_ADMIN" | "VICE_ADMIN" | "TEAM_ADMIN" | "USER";
+export type Role = "SUPER_ADMIN" | "VICE_ADMIN" | "TREASURER" | "TEAM_ADMIN" | "USER";
 
 export type UserStatus = "ACTIVE" | "INACTIVE";
 
@@ -20,6 +20,7 @@ export type ClubUser = {
   teamId: string | null;
   teamColor: string;
   performanceColors?: Record<string, string>;
+  activeYears?: number[];
   role: Role;
   mustChangePassword: boolean;
   status: UserStatus;
@@ -65,6 +66,19 @@ export type SongMember = {
   songId: string;
   userId: string;
   joinedAt: string;
+};
+
+export type ArchiveSong = {
+  id: string;
+  archiveKey: string;
+  performanceTitle: string;
+  teamId: string;
+  songTitle: string;
+  leaderName: string;
+  memberNames: string[];
+  source?: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type ScheduleType = "PERFORMANCE" | "PRACTICE" | "PERSONAL" | "MEETING";
@@ -173,6 +187,7 @@ export type AppData = {
   performances: Performance[];
   songs: Song[];
   songMembers: SongMember[];
+  archiveSongs: ArchiveSong[];
   schedules: Schedule[];
   surveys: ScheduleSurvey[];
   availabilityResponses: AvailabilityResponse[];

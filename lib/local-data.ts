@@ -1,17 +1,38 @@
-import type { AppData, AuditLog, ClubUser, Notice, Performance, Schedule, ScheduleSurvey, Song, SongMember, Team } from "@/types/domain";
+import type { AppData, ArchiveSong, AuditLog, ClubUser, ScheduleSurvey, Team } from "@/types/domain";
 import { uid } from "@/lib/utils";
 
-export const STORAGE_KEY = "club-scheduler-local-data-v3";
-export const SESSION_KEY = "club-scheduler-session-v3";
+export const STORAGE_KEY = "club-scheduler-local-data-v4";
+export const SESSION_KEY = "club-scheduler-session-v4";
 
 const now = () => new Date().toISOString();
+const danceTeamColor = "#7BC7F2";
+
+const completedDanceArchive2026Rows = [
+  { performanceTitle: "새로배움터", songTitle: "The Search", memberNames: ["정서현", "윤연서", "강유진", "김예원", "노영훈", "이지용", "최효우", "홍다영"] },
+  { performanceTitle: "새로배움터", songTitle: "EAT THEM APPLES", memberNames: ["김보민", "강유진", "백예빈", "윤연서", "정서현", "홍다영"] },
+  { performanceTitle: "새로배움터", songTitle: "WCE", memberNames: ["최효우", "김가희", "김민철", "김보민", "노영훈", "양서은", "이지용", "백원진"] },
+  { performanceTitle: "오디션축하무대", songTitle: "Circle", memberNames: ["정서현", "강유진", "김나라", "김보민", "박은지"] },
+  { performanceTitle: "오디션축하무대", songTitle: "Throw a fit", memberNames: ["안현서", "김가영(미컴)", "박은지", "정서현", "홍서연", "김가영(산심)"] },
+  { performanceTitle: "동아리박람회", songTitle: "Diet Pepsi", memberNames: ["강유진", "김보민"] },
+  { performanceTitle: "동아리박람회", songTitle: "Extra L (창작)", memberNames: ["김보민", "남지원", "유리아", "정서현", "최희원"] },
+  { performanceTitle: "동아리박람회", songTitle: "fashion", memberNames: ["백원진", "정서현", "최효우"] },
+  { performanceTitle: "동아리박람회", songTitle: "Luther", memberNames: ["정서현", "노영훈"] },
+  { performanceTitle: "동아리박람회", songTitle: "with the IE", memberNames: ["노영훈", "이지용"] },
+  { performanceTitle: "동아리박람회", songTitle: "worst behaviour explicit", memberNames: ["김가영(미컴)", "윤연서"] },
+  { performanceTitle: "축제", songTitle: "Bounce + say I", memberNames: ["김예원", "강유진", "김나라", "박은지", "백예빈", "정서현", "홍다영"] },
+  { performanceTitle: "축제", songTitle: "난 알아요", memberNames: ["최효우", "강유진", "김가희", "김기주", "김세은", "김예원", "백원진", "정서현", "송인애", "이지용", "장혜린", "홍다영", "유리아"] },
+  { performanceTitle: "축제", songTitle: "FEIN (창작)", memberNames: ["김예림", "김가영(산심)", "김민철", "김보민", "백원진", "최희원"] },
+  { performanceTitle: "축제", songTitle: "입춘", memberNames: ["윤연서", "김가영(미컴)", "김민주", "김예닮", "양서은", "유소연", "정서현", "최효우", "홍다영"] },
+  { performanceTitle: "축제", songTitle: "BUU", memberNames: ["노영훈", "안현서", "김가영(미컴)", "박준수", "백원진"] },
+  { performanceTitle: "축제", songTitle: "협업 (창작)", memberNames: ["김가영(산심)", "안현서", "김세은", "노영훈", "박은지", "백예빈", "이지용", "홍다영"] },
+] as const;
 
 export function createSeedData(): AppData {
   const createdAt = now();
   const teams: Team[] = [
     { id: "team_dance", name: "춤", color: "#7BC7F2", order: 1, isActive: true, createdAt, updatedAt: createdAt },
     { id: "team_rap", name: "랩", color: "#B8C8F8", order: 2, isActive: true, createdAt, updatedAt: createdAt },
-    { id: "team_plan", name: "기획", color: "#F9C6D0", order: 3, isActive: true, createdAt, updatedAt: createdAt },
+    { id: "team_plan", name: "기획", color: "#8BDDD6", order: 3, isActive: true, createdAt, updatedAt: createdAt },
   ];
 
   const users: ClubUser[] = [
@@ -21,103 +42,12 @@ export function createSeedData(): AppData {
       password: "admin1234",
       name: "관리자",
       teamId: "team_plan",
-      teamColor: "#7BC7F2",
+      teamColor: "#8BDDD6",
       performanceColors: {},
+      activeYears: [2026],
       role: "SUPER_ADMIN",
       mustChangePassword: false,
       status: "ACTIVE",
-      createdAt,
-      updatedAt: createdAt,
-    },
-    {
-      id: "user_leader",
-      username: "leader",
-      password: "leader1234",
-      name: "팀장",
-      teamId: "team_dance",
-      teamColor: "#7BC7F2",
-      performanceColors: {},
-      role: "TEAM_ADMIN",
-      mustChangePassword: false,
-      status: "ACTIVE",
-      createdAt,
-      updatedAt: createdAt,
-    },
-    {
-      id: "user_member",
-      username: "member",
-      password: "member1234",
-      name: "일반회원",
-      teamId: "team_dance",
-      teamColor: "#7BC7F2",
-      performanceColors: {},
-      role: "USER",
-      mustChangePassword: false,
-      status: "ACTIVE",
-      createdAt,
-      updatedAt: createdAt,
-    },
-  ];
-
-  const performance: Performance = {
-    id: "perf_sample",
-    title: "샘플 정기공연",
-    description: "공연 상세 설명과 운영 메모를 기록하는 공간입니다.",
-    color: "#7BC7F2",
-    startsAt: "2026-07-25T10:00:00.000Z",
-    endsAt: "2026-07-25T12:00:00.000Z",
-    location: "공연장",
-    memberIds: ["user_admin", "user_leader", "user_member"],
-    status: "ACTIVE",
-    createdBy: "user_admin",
-    createdAt,
-    updatedAt: createdAt,
-  };
-
-  const song: Song = {
-    id: "song_sample",
-    performanceId: performance.id,
-    teamId: "team_dance",
-    title: "Sample Stage",
-    leaderUserId: "user_leader",
-    requiredPracticeCount: 0,
-    estimatedPracticeMinutes: 120,
-    order: 1,
-    status: "ACTIVE",
-    createdAt,
-    updatedAt: createdAt,
-  };
-
-  const songMembers: SongMember[] = [
-    { id: "member_1", performanceId: performance.id, songId: song.id, userId: "user_leader", joinedAt: createdAt },
-    { id: "member_2", performanceId: performance.id, songId: song.id, userId: "user_member", joinedAt: createdAt },
-  ];
-
-  const schedules: Schedule[] = [
-    {
-      id: "schedule_perf",
-      type: "PERFORMANCE",
-      title: performance.title,
-      startsAt: performance.startsAt,
-      endsAt: performance.endsAt,
-      color: performance.color,
-      performanceId: performance.id,
-      visibility: "PUBLIC",
-      status: "CONFIRMED",
-      createdBy: "user_admin",
-      createdAt,
-      updatedAt: createdAt,
-    },
-  ];
-
-  const notices: Notice[] = [
-    {
-      id: "notice_pin",
-      type: "GENERAL",
-      title: "로컬 MVP 안내",
-      content: "현재 데이터는 브라우저에 저장됩니다. Firebase 연결 전 기능 검증용입니다.",
-      pinned: true,
-      createdBy: "user_admin",
       createdAt,
       updatedAt: createdAt,
     },
@@ -126,15 +56,16 @@ export function createSeedData(): AppData {
   return {
     teams,
     users,
-    performances: [performance],
-    songs: [song],
-    songMembers,
-    schedules,
+    performances: [],
+    songs: [],
+    songMembers: [],
+    archiveSongs: [],
+    schedules: [],
     surveys: [],
     availabilityResponses: [],
     ambiguousTimes: [],
     practiceCandidates: [],
-    notices,
+    notices: [],
     auditLogs: [],
   };
 }
@@ -148,14 +79,109 @@ export function readData(): AppData {
     return seed;
   }
   const parsed = JSON.parse(raw) as AppData;
-  return {
+  const archive2025MemberNames = new Set(
+    (parsed.archiveSongs ?? [])
+      .filter((song) => song.archiveKey?.includes("2025") || song.source?.includes("2025"))
+      .flatMap((song) => song.memberNames ?? []),
+  );
+  const activeCurrentUserIds = new Set([
+    ...(parsed.songMembers ?? []).map((member) => member.userId),
+    ...(parsed.performances ?? []).flatMap((performance) => performance.memberIds ?? []),
+  ]);
+  const normalizedData: AppData = {
     ...parsed,
+    archiveSongs: parsed.archiveSongs ?? [],
     performances: parsed.performances.map((performance) => ({ ...performance, memberIds: performance.memberIds ?? [] })),
     users: parsed.users.map((user) => ({
       ...user,
-      teamColor: user.teamColor ?? "#7BC7F2",
+      teamColor: user.teamColor ?? danceTeamColor,
       performanceColors: user.performanceColors ?? {},
+      activeYears: user.activeYears ?? inferActiveYears(user, archive2025MemberNames, activeCurrentUserIds),
     })),
+  };
+  const migratedData = withCompletedDanceArchive2026(normalizedData);
+  if (JSON.stringify(migratedData) !== JSON.stringify(normalizedData)) writeData(migratedData);
+  return migratedData;
+}
+
+function inferActiveYears(user: ClubUser, archiveMemberNames: Set<string>, activeCurrentUserIds: Set<string>) {
+  const years = new Set<number>();
+  const appearsInArchive = archiveMemberNames.has(user.name);
+  if (appearsInArchive) years.add(2025);
+  if (!appearsInArchive || activeCurrentUserIds.has(user.id) || user.role !== "USER" || user.username !== user.name || user.password !== "1234") years.add(2026);
+  return Array.from(years).sort();
+}
+
+function withCompletedDanceArchive2026(data: AppData): AppData {
+  const createdAt = now();
+  const danceTeam = data.teams.find((team) => team.name === "춤") ?? {
+    id: "team_dance",
+    name: "춤",
+    color: danceTeamColor,
+    order: data.teams.length + 1,
+    isActive: true,
+    createdAt,
+    updatedAt: createdAt,
+  };
+  const hasDanceTeam = data.teams.some((team) => team.id === danceTeam.id);
+  const archiveKeys = new Set(data.archiveSongs.map((song) => song.archiveKey));
+  const rows = completedDanceArchive2026Rows.map((row, index) => ({
+    ...row,
+    archiveKey: `2026-dance-completed-${index + 1}-${row.performanceTitle}-${row.songTitle}`,
+    archiveId: `archive_2026_dance_completed_${index + 1}`,
+  }));
+  const allNames: Set<string> = new Set(rows.flatMap((row) => row.memberNames));
+  const existingUserNames = new Set(data.users.map((user) => user.name));
+  const newUsers: ClubUser[] = Array.from(allNames)
+    .filter((name) => !existingUserNames.has(name))
+    .map((name) => ({
+      id: uid("user"),
+      username: name,
+      password: "1234",
+      name,
+      teamId: danceTeam.id,
+      teamColor: danceTeam.color,
+      performanceColors: {},
+      activeYears: [2026],
+      role: "USER",
+      mustChangePassword: true,
+      status: "ACTIVE",
+      createdAt,
+      updatedAt: createdAt,
+    }));
+  const archiveSongs: ArchiveSong[] = rows
+    .filter((row) => !archiveKeys.has(row.archiveKey))
+    .map((row) => ({
+      id: row.archiveId,
+      archiveKey: row.archiveKey,
+      performanceTitle: row.performanceTitle,
+      teamId: danceTeam.id,
+      songTitle: row.songTitle,
+      leaderName: row.memberNames[0] ?? "",
+      memberNames: [...row.memberNames],
+      source: "2026 춤팀 완료 곡",
+      createdAt,
+      updatedAt: createdAt,
+    }));
+  let activeYearChanged = false;
+  const usersWithActiveYears = data.users.map((user) => {
+    if (!allNames.has(user.name)) return user;
+    const activeYears = Array.from(new Set([...(user.activeYears ?? []), 2026])).sort();
+    const currentYears = user.activeYears ?? [];
+    const hasSameYears = activeYears.length === currentYears.length && activeYears.every((year) => currentYears.includes(year));
+    if (hasSameYears) return user;
+    activeYearChanged = true;
+    return { ...user, activeYears };
+  });
+  if (!archiveSongs.length && !newUsers.length && hasDanceTeam && !activeYearChanged) return data;
+  return {
+    ...data,
+    teams: hasDanceTeam ? data.teams : [...data.teams, danceTeam],
+    users: [
+      ...usersWithActiveYears,
+      ...newUsers,
+    ],
+    archiveSongs: [...data.archiveSongs, ...archiveSongs],
   };
 }
 

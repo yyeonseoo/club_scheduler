@@ -77,3 +77,44 @@ textarea {
     radial-gradient(circle at 85% 10%, hsl(215 52% 34% / 0.2), transparent 24rem),
     linear-gradient(135deg, hsl(225 18% 12%), hsl(218 17% 15%));
 }
+
+.login-title-pop {
+  animation: title-pop 760ms cubic-bezier(0.2, 0.9, 0.22, 1) both;
+}
+
+.login-card-rise {
+  animation: card-rise 720ms cubic-bezier(0.2, 0.9, 0.22, 1) 120ms both;
+}
+
+@keyframes title-pop {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+    filter: blur(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes card-rise {
+  from {
+    opacity: 0;
+    transform: translateY(34px);
+    filter: blur(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-title-pop,
+  .login-card-rise {
+    animation: none;
+  }
+}
