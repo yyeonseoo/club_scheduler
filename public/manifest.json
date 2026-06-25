@@ -1,0 +1,9 @@
+{
+  "name": "Club Scheduler",
+  "short_name": "Scheduler",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f9fb",
+  "theme_color": "#129987",
+  "icons": []
+}

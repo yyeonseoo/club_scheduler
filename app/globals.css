@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 207 68% 97%;
+  --foreground: 226 18% 18%;
+  --card: 204 70% 98%;
+  --card-foreground: 226 18% 18%;
+  --primary: 199 82% 67%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 204 80% 88%;
+  --secondary-foreground: 226 18% 18%;
+  --muted: 203 86% 92%;
+  --muted-foreground: 218 18% 42%;
+  --accent: 215 82% 76%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 204 72% 86%;
+  --input: 204 72% 86%;
+  --ring: 199 82% 67%;
+  --radius: 1rem;
+}
+
+.dark {
+  --background: 225 18% 12%;
+  --foreground: 42 42% 96%;
+  --card: 226 16% 17%;
+  --card-foreground: 42 42% 96%;
+  --primary: 199 72% 64%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 204 42% 34%;
+  --secondary-foreground: 42 42% 96%;
+  --muted: 207 28% 24%;
+  --muted-foreground: 204 22% 76%;
+  --accent: 215 62% 64%;
+  --accent-foreground: 42 42% 96%;
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+  --border: 244 16% 28%;
+  --input: 244 16% 28%;
+  --ring: 199 72% 64%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: hsl(var(--accent) / 0.45);
+}
+
+.soft-shell {
+  background:
+    radial-gradient(circle at top left, hsl(199 90% 84% / 0.42), transparent 28rem),
+    radial-gradient(circle at 85% 10%, hsl(210 88% 90% / 0.34), transparent 24rem),
+    linear-gradient(135deg, hsl(210 52% 97%), hsl(195 62% 96%));
+}
+
+.dark .soft-shell {
+  background:
+    radial-gradient(circle at top left, hsl(199 62% 35% / 0.28), transparent 26rem),
+    radial-gradient(circle at 85% 10%, hsl(215 52% 34% / 0.2), transparent 24rem),
+    linear-gradient(135deg, hsl(225 18% 12%), hsl(218 17% 15%));
+}
