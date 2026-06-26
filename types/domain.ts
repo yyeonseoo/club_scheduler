@@ -76,6 +76,7 @@ export type ArchiveSong = {
   songTitle: string;
   leaderName: string;
   memberNames: string[];
+  years?: number[];
   source?: string;
   createdAt: string;
   updatedAt: string;

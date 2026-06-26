@@ -22,6 +22,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type {
+  ArchiveSong,
   AmbiguousTime,
   AppData,
   AvailabilityResponse,
@@ -104,6 +105,22 @@ function calendarDays(month: Date) {
 
 function monthTitle(date: Date) {
   return new Intl.DateTimeFormat("ko-KR", { year: "numeric", month: "long" }).format(date);
+}
+
+function archiveYears(item: ArchiveSong) {
+  if (item.years?.length) return item.years;
+  const value = `${item.source ?? ""} ${item.archiveKey ?? ""}`;
+  return [
+    value.includes("2025") || /\b25\b/.test(value) ? 2025 : null,
+    value.includes("2026") || /\b26\b/.test(value) || value.includes("현재 진행 곡") ? 2026 : null,
+  ].filter((year): year is number => Boolean(year));
+}
+
+function archiveSourceLabel(item: ArchiveSong) {
+  const years = archiveYears(item);
+  if (years.length > 0) return years.map((year) => String(year).slice(2)).join(" · ");
+  const source = item.source;
+  return source ?? "이력";
 }
 
 export default function HomePage() {
@@ -1055,10 +1072,9 @@ function ArchivePanel({ data, currentUser, persist }: { data: AppData; currentUs
     });
 
   function beginMerge(itemId: string) {
-    const item = data.archiveSongs.find((archive) => archive.id === itemId);
     setMergeBaseId(itemId);
     setMergeSelectedIds([]);
-    setMergeQuery(item?.songTitle ?? "");
+    setMergeQuery("");
   }
 
   function cancelMerge() {
@@ -1082,12 +1098,15 @@ function ArchivePanel({ data, currentUser, persist }: { data: AppData; currentUs
     if (!primary) return;
     const performanceTitle = Array.from(new Set(selectedItems.flatMap(({ item }) => splitPerformanceTitles(item.performanceTitle)))).join(" · ");
     const memberNames = Array.from(new Set(selectedItems.flatMap(({ item }) => item.memberNames)));
+    const years = Array.from(new Set(selectedItems.flatMap(({ item }) => archiveYears(item)))).sort();
+    const sourceLabels = Array.from(new Set(selectedItems.map(({ item }) => archiveSourceLabel(item))));
     const sources = Array.from(new Set(selectedItems.map(({ item }) => item.source).filter((source): source is string => Boolean(source))));
     const mergedItem = {
       ...primary,
       performanceTitle,
       memberNames,
-      source: sources.join(" · ") || primary.source,
+      years,
+      source: sourceLabels.join(" · ") || sources.join(" · ") || primary.source,
       updatedAt: nowIso(),
     };
     const removableIds = new Set(selectedItems.map(({ item }) => item.id).filter((id) => id !== primary.id));
@@ -1124,6 +1143,7 @@ function ArchivePanel({ data, currentUser, persist }: { data: AppData; currentUs
         songTitle: song.title,
         leaderName,
         memberNames,
+        years: [2026],
         source: "현재 진행 곡",
         createdAt,
         updatedAt: createdAt,
@@ -1134,6 +1154,8 @@ function ArchivePanel({ data, currentUser, persist }: { data: AppData; currentUs
       archiveSongs: [...data.archiveSongs, ...archiveSongs],
       auditLogs: [...data.auditLogs, createAudit(currentUser, "IMPORT_CURRENT_SONGS_TO_ARCHIVE", "archiveSongs", "current", { songs: archiveSongs.length })],
     });
+    setQuery("");
+    setSelectedNames([]);
   }
 
   return (
@@ -1237,7 +1259,7 @@ function ArchivePanel({ data, currentUser, persist }: { data: AppData; currentUs
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {selectedNames.length > 0 && <span className="w-fit rounded-full bg-primary/15 px-3 py-1 text-xs font-black text-primary">{selectedMatchCount}/{selectedNames.length}명 일치</span>}
-                    <span className="w-fit rounded-full bg-white/65 px-3 py-1 text-xs font-black text-muted-foreground">{item.source ?? "이력"}</span>
+                    <span className="w-fit rounded-full bg-white/65 px-3 py-1 text-xs font-black text-muted-foreground">{archiveSourceLabel(item)}</span>
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -2030,6 +2052,20 @@ function MemberDetailPanel({ data, user, persist }: { data: AppData; user: ClubU
     });
   }
 
+  function deleteMember() {
+    const ok = window.confirm(`${user.name} 멤버를 삭제할까요? 참여 곡과 일정 응답에서도 함께 제거됩니다.`);
+    if (!ok) return;
+    persist({
+      ...data,
+      users: data.users.filter((item) => item.id !== user.id),
+      performances: data.performances.map((performance) => ({ ...performance, memberIds: performance.memberIds.filter((memberId) => memberId !== user.id), updatedAt: nowIso() })),
+      songMembers: data.songMembers.filter((member) => member.userId !== user.id),
+      availabilityResponses: data.availabilityResponses.filter((response) => response.userId !== user.id),
+      ambiguousTimes: data.ambiguousTimes.filter((time) => time.userId !== user.id),
+      schedules: data.schedules.filter((schedule) => schedule.ownerUserId !== user.id),
+    });
+  }
+
   function toggleActiveYear(year: number) {
     setForm((current) => ({
       ...current,
@@ -2065,6 +2101,9 @@ function MemberDetailPanel({ data, user, persist }: { data: AppData; user: ClubU
             </div>
           </div>
           <PrimaryButton onClick={save}>수정 저장</PrimaryButton>
+          <button type="button" className="w-full rounded-2xl bg-white/70 px-4 py-3 text-sm font-black text-red-500 shadow-sm transition hover:bg-red-50" onClick={deleteMember}>
+            멤버 삭제
+          </button>
         </div>
         <DataList title="참여 중인 곡" items={joinedSongs.map((song) => ({ id: song.id, title: song.title, meta: `${data.performances.find((performance) => performance.id === song.performanceId)?.title ?? "공연 없음"} · ${data.teams.find((team) => team.id === song.teamId)?.name ?? "팀 없음"}` }))} />
       </div>

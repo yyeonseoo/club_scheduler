@@ -6,6 +6,61 @@ export const SESSION_KEY = "club-scheduler-session-v4";
 
 const now = () => new Date().toISOString();
 const danceTeamColor = "#7BC7F2";
+const memberAliases: Record<string, string> = {
+  "리아": "유리아",
+  "김예림": "김예닮",
+};
+
+type DanceArchiveRow = {
+  performanceTitle: string;
+  songTitle: string;
+  memberNames: readonly string[];
+};
+
+const completedDanceArchive2025Rows: readonly DanceArchiveRow[] = [
+  { performanceTitle: "515DAY", songTitle: "With the IE (way up)", memberNames: ["노영훈", "이지용"] },
+  { performanceTitle: "동아리박람회", songTitle: "Luther", memberNames: ["정서현", "노영훈"] },
+  { performanceTitle: "광음", songTitle: "LV Bag & Dumb", memberNames: ["안현서", "김가영(미컴)"] },
+  { performanceTitle: "광음", songTitle: "Automatic remix & Flipflop & 무서워", memberNames: ["강유진", "김예원"] },
+  { performanceTitle: "동아리밤", songTitle: "Talk dirty", memberNames: ["정서현", "강유진", "김예원"] },
+  { performanceTitle: "광음", songTitle: "Spend it & Diet Pepsi", memberNames: ["김보민", "강유진"] },
+  { performanceTitle: "광음", songTitle: "Body party & Personal", memberNames: ["남지원", "윤연서"] },
+  { performanceTitle: "동아리박람회", songTitle: "Gucci", memberNames: ["박은지", "정서현"] },
+  { performanceTitle: "광음", songTitle: "Rodeo remix", memberNames: ["정서현", "홍서연"] },
+  { performanceTitle: "축제", songTitle: "Lovely Remix", memberNames: ["김가영(미컴)", "김가영(산심)"] },
+  { performanceTitle: "광음", songTitle: "C-SPOT", memberNames: ["박준수", "김가영(산심)", "노영훈", "백예빈", "양서은", "윤연서", "이진", "정서현", "홍서연"] },
+  { performanceTitle: "새로배움터", songTitle: "Richman", memberNames: ["박준수", "권하늘", "김가영(미컴)", "노영훈", "안현서", "양서은", "이지용", "정서현", "최희원"] },
+  { performanceTitle: "515DAY", songTitle: "Yeah", memberNames: ["안현서", "김민철", "김예원", "김준재", "남지원", "박은지", "박하연", "양서은", "우상규", "윤연서", "이혜원", "정다현", "정서현", "홍다영"] },
+  { performanceTitle: "축제", songTitle: "Big & Throw a fit", memberNames: ["안현서", "김가영(미컴)", "박은지", "정서현", "홍서연"] },
+  { performanceTitle: "축제", songTitle: "나를돌아봐", memberNames: ["정서현", "김가영(미컴)", "김가희", "김민철", "김보민", "김예원", "노영훈", "백예빈", "이지용", "홍다영", "홍서연", "안현서", "유이정"] },
+  { performanceTitle: "광음", songTitle: "WISE", memberNames: ["윤연서", "김가영(미컴)", "김민철", "김보민", "김예원", "안현서", "양서은", "이지용", "이현수", "정서현", "김우재", "박은지", "박하연", "이심현", "이진", "홍다영"] },
+  { performanceTitle: "광음", songTitle: "Like this & Momma I Hit a Lick", memberNames: ["홍예나", "강유진", "김가영(미컴)", "안현서", "양서은"] },
+  { performanceTitle: "광음", songTitle: "Ayo & Baby Gurl(ver.1)", memberNames: ["김가영(미컴)", "안현서", "이지용", "최희원", "홍다영", "정서현", "김보민", "박준수"] },
+  { performanceTitle: "광음", songTitle: "Let It Lead & 99 Problems", memberNames: ["안현서", "권하늘", "김가영(산심)", "김예원", "홍다영", "김가영(미컴)", "노영훈"] },
+  { performanceTitle: "광음", songTitle: "Sekkle&Bob & Baby Gurl(ver.2)", memberNames: ["최효우", "리아", "양서은", "이지용"] },
+  { performanceTitle: "광음", songTitle: "Bounce & Say I", memberNames: ["김예원", "박은지", "박하연", "백예빈", "안현서", "정서현", "홍다영"] },
+  { performanceTitle: "광음", songTitle: "Hall of Fame", memberNames: ["이혜원", "권하늘", "남지원", "리아", "최희원"] },
+  { performanceTitle: "광음", songTitle: "Mek it Bunx Up", memberNames: ["정서현", "강유진", "김예원", "박은지", "안현서", "양서은", "윤연서"] },
+  { performanceTitle: "축제", songTitle: "Banji", memberNames: ["박하연", "김가영(산심)", "김예원", "양서은", "차승연", "홍서연"] },
+  { performanceTitle: "광음", songTitle: "In N Out", memberNames: ["박은지", "강유진", "김가희", "김민주", "김예원", "남지원", "리아", "백예빈", "양혜원", "이혜원", "정서현", "홍다영"] },
+  { performanceTitle: "축제", songTitle: "Alphas", memberNames: ["박은지", "강유진", "김예원", "남지원", "양서은", "윤연서"] },
+  { performanceTitle: "515DAY", songTitle: "Sushi", memberNames: ["김예원", "강유진", "김가영(산심)", "김민주", "김보민", "남지원", "리아", "박하연", "양연우", "윤연서", "이수민", "이심현", "이혜원"] },
+  { performanceTitle: "광음", songTitle: "Toxic", memberNames: ["김예원", "강유진", "김가영(산심)", "리아", "박하연", "윤연서"] },
+  { performanceTitle: "동아리밤", songTitle: "Drug", memberNames: ["홍서연", "강유진", "남지원", "백예빈", "양서은", "홍다영"] },
+  { performanceTitle: "광음", songTitle: "ExtraL*창작", memberNames: ["김보민", "남지원", "리아", "정서현", "최희원"] },
+  { performanceTitle: "광음", songTitle: "Abracadabra*창작", memberNames: ["김가영(산심)", "박하연", "백예빈", "양서은"] },
+  { performanceTitle: "광음", songTitle: "Instruction & Sticky", memberNames: ["윤연서", "김예원", "남지원", "박은지", "정서현"] },
+  { performanceTitle: "새로배움터", songTitle: "God It & Anxiety Kills", memberNames: ["김보민", "강유진", "김나라", "박하연", "유이정", "이혜원", "홍다영"] },
+  { performanceTitle: "새로배움터", songTitle: "Lazarus", memberNames: ["김예원", "김우재", "김준재", "박은지", "박하연", "안현서", "양서은", "우상규", "윤연서", "정서현", "홍다영", "홍서연"] },
+  { performanceTitle: "축제", songTitle: "Oh My Gawd", memberNames: ["정서현", "김준재", "백예빈", "박은지", "안현서", "우상규", "양서은", "홍다영", "김가영(산심)", "김예원", "남지원", "박하연", "윤연서", "이혜원", "정다현", "홍서연"] },
+  { performanceTitle: "GNCS", songTitle: "Pose!*창작", memberNames: ["김가영(산심)", "김가희", "김보민", "김카린", "리아", "양혜원", "이심현", "이현수", "정서현", "홍다영"] },
+  { performanceTitle: "동아리밤", songTitle: "I Love You Kung Fu & The Search", memberNames: ["정서현", "강유진", "김예원", "노영훈", "윤연서", "이지용", "최효우"] },
+  { performanceTitle: "광음", songTitle: "Runaway Baby", memberNames: ["김가영(미컴)", "강유진", "남지원", "노영훈", "양연우"] },
+  { performanceTitle: "광음", songTitle: "Ridin’& Friday Night", memberNames: ["홍다영", "김가영(미컴)", "백예빈", "유이정"] },
+  { performanceTitle: "광음", songTitle: "Chill & Timeless", memberNames: ["윤연서", "강유진", "김가희", "리아", "박은지"] },
+  { performanceTitle: "광음", songTitle: "섹시느낌*창작", memberNames: ["김민철", "권하늘", "노영훈", "박준수", "이지용", "최효우", "최희원"] },
+  { performanceTitle: "광음", songTitle: "Circle", memberNames: ["정서현", "강유진", "김나라", "김보민", "박은지"] },
+];
 
 const completedDanceArchive2026Rows = [
   { performanceTitle: "새로배움터", songTitle: "The Search", memberNames: ["정서현", "윤연서", "강유진", "김예원", "노영훈", "이지용", "최효우", "홍다영"] },
@@ -90,7 +145,7 @@ export function readData(): AppData {
   ]);
   const normalizedData: AppData = {
     ...parsed,
-    archiveSongs: parsed.archiveSongs ?? [],
+    archiveSongs: dedupeArchiveSongs(parsed.archiveSongs ?? []),
     performances: parsed.performances.map((performance) => ({ ...performance, memberIds: performance.memberIds ?? [] })),
     users: parsed.users.map((user) => ({
       ...user,
@@ -99,7 +154,14 @@ export function readData(): AppData {
       activeYears: user.activeYears ?? inferActiveYears(user, archive2025MemberNames, activeCurrentUserIds),
     })),
   };
-  const migratedData = withCompletedDanceArchive2026(normalizedData);
+  const completedArchiveData = withCompletedDanceArchive(
+    withCompletedDanceArchive(normalizedData, completedDanceArchive2025Rows, 2025, "2025 춤팀 곡 목록.pdf"),
+    completedDanceArchive2026Rows,
+    2026,
+    "2026 춤팀 완료 곡",
+  );
+  const aliasNormalizedData = normalizeMemberAliases(completedArchiveData);
+  const migratedData = { ...aliasNormalizedData, archiveSongs: dedupeArchiveSongs(aliasNormalizedData.archiveSongs) };
   if (JSON.stringify(migratedData) !== JSON.stringify(normalizedData)) writeData(migratedData);
   return migratedData;
 }
@@ -112,7 +174,103 @@ function inferActiveYears(user: ClubUser, archiveMemberNames: Set<string>, activ
   return Array.from(years).sort();
 }
 
-function withCompletedDanceArchive2026(data: AppData): AppData {
+function dedupeArchiveSongs(archiveSongs: ArchiveSong[]) {
+  const seen = new Set<string>();
+  return archiveSongs.map((song) => ({ ...song, years: song.years ?? inferArchiveYears(song) })).filter((song) => {
+    const memberKey = [...song.memberNames].map((name) => name.trim()).sort((a, b) => a.localeCompare(b, "ko")).join("|");
+    const key = [
+      song.performanceTitle.trim(),
+      song.songTitle.trim(),
+      song.leaderName.trim(),
+      song.teamId,
+      song.source ?? "",
+      memberKey,
+    ].join("::");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function canonicalMemberName(name: string) {
+  return memberAliases[name] ?? name;
+}
+
+function normalizeMemberAliases(data: AppData): AppData {
+  const usersByName = new Map(data.users.map((user) => [user.name, user]));
+  const aliasUserIdToCanonicalId = new Map<string, string>();
+  const mergedUserByCanonicalName = new Map<string, ClubUser>();
+
+  for (const user of data.users) {
+    const canonicalName = canonicalMemberName(user.name);
+    const existing = mergedUserByCanonicalName.get(canonicalName) ?? usersByName.get(canonicalName);
+    const normalizedUser: ClubUser = {
+      ...user,
+      name: canonicalName,
+      username: user.username === user.name ? canonicalName : user.username,
+      activeYears: user.activeYears ?? [],
+    };
+
+    if (!existing) {
+      mergedUserByCanonicalName.set(canonicalName, { ...normalizedUser, activeYears: Array.from(new Set(normalizedUser.activeYears)).sort() });
+      aliasUserIdToCanonicalId.set(user.id, user.id);
+      continue;
+    }
+
+    const activeYears = Array.from(new Set([...(existing.activeYears ?? []), ...(normalizedUser.activeYears ?? [])])).sort();
+    if (existing.id === user.id) {
+      mergedUserByCanonicalName.set(canonicalName, { ...existing, ...normalizedUser, activeYears });
+      aliasUserIdToCanonicalId.set(user.id, user.id);
+      continue;
+    }
+
+    mergedUserByCanonicalName.set(canonicalName, {
+      ...existing,
+      name: canonicalName,
+      username: existing.username === existing.name ? canonicalName : existing.username,
+      activeYears,
+      updatedAt: now(),
+    });
+    aliasUserIdToCanonicalId.set(user.id, existing.id);
+    aliasUserIdToCanonicalId.set(existing.id, existing.id);
+  }
+
+  const mapUserId = (userId: string) => aliasUserIdToCanonicalId.get(userId) ?? userId;
+  const dedupeIds = (ids: string[]) => Array.from(new Set(ids.map(mapUserId)));
+  const songMemberKeys = new Set<string>();
+  const songMembers = data.songMembers.flatMap((member) => {
+    const userId = mapUserId(member.userId);
+    const key = `${member.songId}:${userId}`;
+    if (songMemberKeys.has(key)) return [];
+    songMemberKeys.add(key);
+    return [{ ...member, userId }];
+  });
+
+  return {
+    ...data,
+    users: Array.from(mergedUserByCanonicalName.values()),
+    performances: data.performances.map((performance) => ({ ...performance, memberIds: dedupeIds(performance.memberIds) })),
+    songMembers,
+    availabilityResponses: data.availabilityResponses.map((response) => ({ ...response, userId: mapUserId(response.userId) })),
+    ambiguousTimes: data.ambiguousTimes.map((time) => ({ ...time, userId: mapUserId(time.userId) })),
+    schedules: data.schedules.map((schedule) => ({ ...schedule, ownerUserId: schedule.ownerUserId ? mapUserId(schedule.ownerUserId) : schedule.ownerUserId })),
+    archiveSongs: data.archiveSongs.map((song) => ({
+      ...song,
+      leaderName: canonicalMemberName(song.leaderName),
+      memberNames: Array.from(new Set(song.memberNames.map(canonicalMemberName))),
+    })),
+  };
+}
+
+function inferArchiveYears(song: ArchiveSong) {
+  const value = `${song.source ?? ""} ${song.archiveKey ?? ""}`;
+  return [
+    value.includes("2025") || /\b25\b/.test(value) ? 2025 : null,
+    value.includes("2026") || /\b26\b/.test(value) || value.includes("현재 진행 곡") ? 2026 : null,
+  ].filter((year): year is number => Boolean(year));
+}
+
+function withCompletedDanceArchive(data: AppData, archiveRows: readonly DanceArchiveRow[], year: number, source: string): AppData {
   const createdAt = now();
   const danceTeam = data.teams.find((team) => team.name === "춤") ?? {
     id: "team_dance",
@@ -125,30 +283,14 @@ function withCompletedDanceArchive2026(data: AppData): AppData {
   };
   const hasDanceTeam = data.teams.some((team) => team.id === danceTeam.id);
   const archiveKeys = new Set(data.archiveSongs.map((song) => song.archiveKey));
-  const rows = completedDanceArchive2026Rows.map((row, index) => ({
+  const rows = archiveRows.map((row, index) => ({
     ...row,
-    archiveKey: `2026-dance-completed-${index + 1}-${row.performanceTitle}-${row.songTitle}`,
-    archiveId: `archive_2026_dance_completed_${index + 1}`,
+    archiveKey: `${year}-dance-completed-${index + 1}-${row.performanceTitle}-${row.songTitle}`,
+    archiveId: `archive_${year}_dance_completed_${index + 1}`,
   }));
   const allNames: Set<string> = new Set(rows.flatMap((row) => row.memberNames));
   const existingUserNames = new Set(data.users.map((user) => user.name));
-  const newUsers: ClubUser[] = Array.from(allNames)
-    .filter((name) => !existingUserNames.has(name))
-    .map((name) => ({
-      id: uid("user"),
-      username: name,
-      password: "1234",
-      name,
-      teamId: danceTeam.id,
-      teamColor: danceTeam.color,
-      performanceColors: {},
-      activeYears: [2026],
-      role: "USER",
-      mustChangePassword: true,
-      status: "ACTIVE",
-      createdAt,
-      updatedAt: createdAt,
-    }));
+  const missingUserNames = Array.from(allNames).filter((name) => !existingUserNames.has(name));
   const archiveSongs: ArchiveSong[] = rows
     .filter((row) => !archiveKeys.has(row.archiveKey))
     .map((row) => ({
@@ -159,14 +301,32 @@ function withCompletedDanceArchive2026(data: AppData): AppData {
       songTitle: row.songTitle,
       leaderName: row.memberNames[0] ?? "",
       memberNames: [...row.memberNames],
-      source: "2026 춤팀 완료 곡",
+      years: [year],
+      source,
       createdAt,
       updatedAt: createdAt,
     }));
+  const newUsers: ClubUser[] = archiveSongs.length === 0
+    ? []
+    : missingUserNames.map((name) => ({
+        id: uid("user"),
+        username: name,
+        password: "1234",
+        name,
+        teamId: danceTeam.id,
+        teamColor: danceTeam.color,
+        performanceColors: {},
+        activeYears: [year],
+        role: "USER",
+        mustChangePassword: true,
+        status: "ACTIVE",
+        createdAt,
+        updatedAt: createdAt,
+      }));
   let activeYearChanged = false;
   const usersWithActiveYears = data.users.map((user) => {
     if (!allNames.has(user.name)) return user;
-    const activeYears = Array.from(new Set([...(user.activeYears ?? []), 2026])).sort();
+    const activeYears = Array.from(new Set([...(user.activeYears ?? []), year])).sort();
     const currentYears = user.activeYears ?? [];
     const hasSameYears = activeYears.length === currentYears.length && activeYears.every((year) => currentYears.includes(year));
     if (hasSameYears) return user;
