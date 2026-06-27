@@ -5,22 +5,28 @@ import {
   Archive,
   CalendarDays,
   Check,
+  ChevronDown,
+  Clock3,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   ClipboardList,
   KeyRound,
   LogOut,
   Megaphone,
   Moon,
   Music2,
+  Pencil,
   Plus,
   RotateCcw,
   Settings,
   Sparkles,
   Sun,
+  Trash2,
   Users,
   type LucideIcon,
 } from "lucide-react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import type {
   ArchiveSong,
   AmbiguousTime,
@@ -37,7 +43,7 @@ import type {
   SongMember,
   Team,
 } from "@/types/domain";
-import { createAudit, readData, resetData, SESSION_KEY, writeData } from "@/lib/local-data";
+import { createAudit, readData, resetData, SESSION_KEY, syncCurrentSongsToArchive, writeData } from "@/lib/local-data";
 import { canManageTeams, canManageUsers, isAdminRole, roleLabel } from "@/lib/permissions";
 import { cn, uid } from "@/lib/utils";
 
@@ -123,6 +129,25 @@ function archiveSourceLabel(item: ArchiveSong) {
   return source ?? "이력";
 }
 
+function formatSongDuration(seconds?: number) {
+  if (!seconds || seconds < 1) return "";
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function formatTotalDuration(seconds: number) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainingSeconds = seconds % 60;
+  if (hours > 0) return `${hours}시간 ${minutes}분 ${remainingSeconds}초`;
+  return `${minutes}분 ${String(remainingSeconds).padStart(2, "0")}초`;
+}
+
+function parseSongDuration(value: string) {
+  const match = value.trim().match(/^(\d{1,3})(?::([0-5]?\d))?$/);
+  if (!match) return undefined;
+  return Number(match[1]) * 60 + Number(match[2] ?? 0);
+}
+
 export default function HomePage() {
   const [data, setData] = useState<AppData | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -136,8 +161,9 @@ export default function HomePage() {
   }, []);
 
   function persist(next: AppData) {
-    setData(next);
-    writeData(next);
+    const synced = syncCurrentSongsToArchive(next);
+    setData(synced);
+    writeData(synced);
   }
 
   const currentUser = data?.users.find((user) => user.id === session?.userId) ?? null;
@@ -300,7 +326,7 @@ function AppShell({
         ["calendar", "캘린더", CalendarDays],
         ["users", "멤버", Users],
         ["performances", "공연 관리", Music2],
-        ["songs", "공연 곡 관리", ClipboardList],
+        ["songs", "연습 일정 관리", ClipboardList],
         ["archive", "과거 공연 이력", Archive],
         ["notices", "공지", Megaphone],
         ["audit", "로그", ClipboardList],
@@ -846,6 +872,12 @@ function SongManagementPanel({ data, currentUser, persist }: { data: AppData; cu
   const sortedPending = pending.slice().sort((a, b) => b.availableMemberCount - a.availableMemberCount || a.startsAt.localeCompare(b.startsAt));
   const grouped = data.performances.map((performance) => ({ performance, songs: data.songs.filter((song) => song.performanceId === performance.id) })).filter((group) => group.songs.length > 0);
   const selectedSong = data.songs.find((song) => song.id === selectedSongId) ?? null;
+  const selectedSongMembers = selectedSong
+    ? data.songMembers
+      .filter((member) => member.songId === selectedSong.id)
+      .map((member) => data.users.find((user) => user.id === member.userId))
+      .filter((user): user is ClubUser => Boolean(user))
+    : [];
   const conflicts = findPracticeConflicts(pending, data);
 
   function approveRequest(candidate: PracticeCandidate) {
@@ -863,16 +895,31 @@ function SongManagementPanel({ data, currentUser, persist }: { data: AppData; cu
         {grouped.map(({ performance, songs }) => (
           <Panel key={performance.id} title={performance.title}>
             <div className="grid gap-3 md:grid-cols-2">
-              {songs.map((song) => (
-                <button key={song.id} className={cn("rounded-[1.2rem] border p-4 text-left", selectedSongId === song.id ? "border-primary bg-primary/10" : "border-white/80 bg-card/70 dark:border-white/10")} onClick={() => setSelectedSongId(song.id)}>
+              {songs.map((song) => {
+                const memberCount = data.songMembers.filter((member) => member.songId === song.id).length;
+                return (
+                <button key={song.id} className={cn("rounded-[1.2rem] border p-4 text-left", selectedSongId === song.id ? "border-primary bg-primary/10" : "border-white/80 bg-card/70 dark:border-white/10")} onClick={() => setSelectedSongId(selectedSongId === song.id ? null : song.id)}>
                   <span className="mb-3 block h-2 w-12 rounded-full" style={{ backgroundColor: performanceColor(performance, currentUser) }} />
                   <p className="font-black">{song.title}</p>
-                  <p className="text-sm text-muted-foreground">대기 요청 {pending.filter((item) => item.songId === song.id).length}개</p>
+                  <p className="text-sm text-muted-foreground">인원 {memberCount}명 · 대기 요청 {pending.filter((item) => item.songId === song.id).length}개{song.durationSeconds ? ` · ${formatSongDuration(song.durationSeconds)}` : ""}</p>
                 </button>
-              ))}
+                );
+              })}
             </div>
           </Panel>
         ))}
+        {selectedSong && (
+          <Panel title={`${selectedSong.title} 참여 인원`}>
+            <p className="mb-4 text-sm font-bold text-muted-foreground">
+              팀장 {data.users.find((user) => user.id === selectedSong.leaderUserId)?.name ?? "미지정"}
+              {selectedSong.durationSeconds ? ` · 곡 시간 ${formatSongDuration(selectedSong.durationSeconds)}` : ""}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {selectedSongMembers.map((user) => <UserPill key={user.id} user={user} data={data} />)}
+              {selectedSongMembers.length === 0 && <p className="text-sm text-muted-foreground">등록된 참여 인원이 없습니다.</p>}
+            </div>
+          </Panel>
+        )}
       </div>
       <aside className="space-y-5">
         <Panel title="전체 연습 요청">
@@ -925,12 +972,16 @@ function SurveyPanel({ data, currentUser, persist }: { data: AppData; currentUse
   const memberSongIds = data.songMembers.filter((member) => member.userId === currentUser.id).map((member) => member.songId);
   const openSurveys = data.surveys.filter((survey) => survey.status === "OPEN" && memberSongIds.includes(survey.songId));
   const leaderSurveys = data.surveys.filter((survey) => leaderSongs.some((song) => song.id === survey.songId));
+  const activeLeaderSurveys = leaderSurveys.filter((survey) => survey.status === "OPEN");
   const [form, setForm] = useState({ songId: leaderSongs[0]?.id ?? "", startDate: today(), endDate: today(), timeStart: "18:00", timeEnd: "22:00" });
   const [selectedSurveyId, setSelectedSurveyId] = useState(openSurveys[0]?.id ?? "");
   const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set());
   const [dragMode, setDragMode] = useState<"select" | "erase" | null>(null);
   const [ambiguousMemo, setAmbiguousMemo] = useState("");
+  const [showActiveSurveys, setShowActiveSurveys] = useState(false);
+  const [selectedLeaderSurveyId, setSelectedLeaderSurveyId] = useState("");
   const selectedSurvey = openSurveys.find((survey) => survey.id === selectedSurveyId) ?? openSurveys[0] ?? null;
+  const selectedLeaderSurvey = activeLeaderSurveys.find((survey) => survey.id === selectedLeaderSurveyId) ?? activeLeaderSurveys[0] ?? null;
   const selectedSurveyDates = selectedSurvey ? getDateRange(selectedSurvey.startDate, selectedSurvey.endDate) : [];
   const selectedSurveyTimes = selectedSurvey ? getSurveyTimes(selectedSurvey) : [];
 
@@ -977,8 +1028,17 @@ function SurveyPanel({ data, currentUser, persist }: { data: AppData; currentUse
 
   function createRecommendedCandidate(survey: ScheduleSurvey, recommendation: { date: string; start: string; end: string; count: number; total: number }) {
     const song = data.songs.find((item) => item.id === survey.songId);
-    if (!song || song.leaderUserId !== currentUser.id) return;
+    if (!song || song.leaderUserId !== currentUser.id) return false;
     const createdAt = nowIso();
+    const startsAt = makeLocalIso(recommendation.date, recommendation.start);
+    const endsAt = makeLocalIso(recommendation.date, recommendation.end);
+    const duplicate = data.practiceCandidates.some((candidate) =>
+      candidate.songId === song.id
+      && candidate.startsAt === startsAt
+      && candidate.endsAt === endsAt
+      && candidate.status !== "REJECTED"
+    );
+    if (duplicate) return false;
     const candidate: PracticeCandidate = {
       id: uid("candidate"),
       performanceId: song.performanceId,
@@ -986,8 +1046,8 @@ function SurveyPanel({ data, currentUser, persist }: { data: AppData; currentUse
       surveyId: survey.id,
       proposedBy: currentUser.id,
       title: `${song.title} 연습`,
-      startsAt: makeLocalIso(recommendation.date, recommendation.start),
-      endsAt: makeLocalIso(recommendation.date, recommendation.end),
+      startsAt,
+      endsAt,
       availableMemberCount: recommendation.count,
       totalMemberCount: recommendation.total,
       memo: `일정 조사 추천 후보 · ${recommendation.count}/${recommendation.total}명 가능`,
@@ -996,25 +1056,52 @@ function SurveyPanel({ data, currentUser, persist }: { data: AppData; currentUse
       updatedAt: createdAt,
     };
     persist({ ...data, practiceCandidates: [...data.practiceCandidates, candidate] });
+    return true;
   }
 
   return (
-    <section className="grid gap-5 xl:grid-cols-[380px_1fr]">
-      <div className="space-y-5">
+    <section className="space-y-5">
+      {leaderSongs.length > 0 && (
         <Panel title="일정 조사 만들기">
-          {leaderSongs.length === 0 ? <p className="text-sm leading-6 text-muted-foreground">팀장으로 지정된 곡이 있을 때만 일정을 조사할 수 있습니다.</p> : (
-            <div className="space-y-3">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               <Select label="팀장인 곡" value={form.songId} onChange={(value) => setForm({ ...form, songId: value })} options={leaderSongs.map((song) => [song.id, song.title])} />
               <Field label="시작 날짜" type="date" value={form.startDate} onChange={(value) => setForm({ ...form, startDate: value })} />
               <Field label="종료 날짜" type="date" value={form.endDate} onChange={(value) => setForm({ ...form, endDate: value })} />
               <Field label="시작 시간" type="time" value={form.timeStart} onChange={(value) => setForm({ ...form, timeStart: value })} />
               <Field label="종료 시간" type="time" value={form.timeEnd} onChange={(value) => setForm({ ...form, timeEnd: value })} />
-              <PrimaryButton onClick={addSurvey}>조사 생성</PrimaryButton>
+              <div className="flex items-end"><PrimaryButton onClick={addSurvey}>조사 생성</PrimaryButton></div>
+          </div>
+        </Panel>
+      )}
+      {leaderSongs.length > 0 && (
+        <>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between rounded-3xl border border-primary/15 bg-primary/10 px-5 py-4 text-left transition hover:bg-primary/15 disabled:cursor-default disabled:opacity-60"
+            disabled={activeLeaderSurveys.length === 0}
+            onClick={() => setShowActiveSurveys((value) => !value)}
+          >
+            <span>
+              <span className="block text-base font-black">내가 만든 진행 중인 조사</span>
+              <span className="mt-1 block text-xs font-bold text-muted-foreground">{activeLeaderSurveys.length > 0 ? `${activeLeaderSurveys.length}개` : "현재 진행 중인 조사가 없습니다"}</span>
+            </span>
+            {showActiveSurveys ? <ChevronUp className="text-primary" size={21} /> : <ChevronDown className="text-primary" size={21} />}
+          </button>
+          {showActiveSurveys && selectedLeaderSurvey && (
+            <div className="space-y-4">
+              <div className="rounded-3xl bg-primary/8 p-4">
+                <Select
+                  label="확인할 조사"
+                  value={selectedLeaderSurvey.id}
+                  onChange={setSelectedLeaderSurveyId}
+                  options={activeLeaderSurveys.map((survey) => [survey.id, survey.title])}
+                />
+              </div>
+              <SurveySummaryPanel data={data} surveys={[selectedLeaderSurvey]} onCreateCandidate={createRecommendedCandidate} />
             </div>
           )}
-        </Panel>
-        <SurveySummaryPanel data={data} surveys={leaderSurveys} onCreateCandidate={createRecommendedCandidate} />
-      </div>
+        </>
+      )}
       <Panel title="조사 응답">
         {openSurveys.length === 0 || !selectedSurvey ? (
           <p className="text-sm text-muted-foreground">참여 중인 열린 조사가 없습니다.</p>
@@ -1044,6 +1131,9 @@ function ArchivePanel({ data, currentUser, persist }: { data: AppData; currentUs
   const [mergeBaseId, setMergeBaseId] = useState("");
   const [mergeQuery, setMergeQuery] = useState("");
   const [mergeSelectedIds, setMergeSelectedIds] = useState<string[]>([]);
+  const [editingArchiveId, setEditingArchiveId] = useState("");
+  const [archiveForm, setArchiveForm] = useState({ performanceTitle: "", songTitle: "", duration: "", teamId: "", leaderName: "", memberNames: [] as string[] });
+  const archiveClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const normalizedQuery = query.trim().toLowerCase();
   const normalizedMergeQuery = mergeQuery.trim().toLowerCase();
   const mergeBase = data.archiveSongs.find((item) => item.id === mergeBaseId) ?? null;
@@ -1081,6 +1171,97 @@ function ArchivePanel({ data, currentUser, persist }: { data: AppData; currentUs
     setMergeBaseId("");
     setMergeSelectedIds([]);
     setMergeQuery("");
+  }
+
+  function beginArchiveEdit(item: ArchiveSong) {
+    setEditingArchiveId(item.id);
+    setArchiveForm({
+      performanceTitle: item.performanceTitle,
+      songTitle: item.songTitle,
+      duration: formatSongDuration(item.durationSeconds),
+      teamId: item.teamId,
+      leaderName: item.leaderName,
+      memberNames: item.memberNames,
+    });
+  }
+
+  function handleArchiveClick(item: ArchiveSong) {
+    if (archiveClickTimer.current) clearTimeout(archiveClickTimer.current);
+    archiveClickTimer.current = setTimeout(() => beginArchiveEdit(item), 220);
+  }
+
+  function handleArchiveDoubleClick(item: ArchiveSong) {
+    if (archiveClickTimer.current) clearTimeout(archiveClickTimer.current);
+    archiveClickTimer.current = null;
+    setEditingArchiveId("");
+    beginMerge(item.id);
+  }
+
+  function saveArchiveEdit() {
+    const item = data.archiveSongs.find((archive) => archive.id === editingArchiveId);
+    if (!item || !archiveForm.songTitle.trim()) return;
+    const updatedAt = nowIso();
+    const currentSong = data.songs.find((song) => item.archiveKey === `current-${song.performanceId}-${song.id}`);
+    const selectedUsers = data.users.filter((user) => archiveForm.memberNames.includes(user.name));
+    const leader = selectedUsers.find((user) => user.name === archiveForm.leaderName) ?? selectedUsers[0];
+
+    if (currentSong) {
+      const nextMemberships: SongMember[] = selectedUsers.map((user) => ({ id: uid("member"), performanceId: currentSong.performanceId, songId: currentSong.id, userId: user.id, joinedAt: updatedAt }));
+      persist({
+        ...data,
+        performances: data.performances.map((performance) => performance.id === currentSong.performanceId ? { ...performance, title: archiveForm.performanceTitle.trim() || performance.title, updatedAt } : performance),
+        schedules: data.schedules.map((schedule) => schedule.type === "PERFORMANCE" && schedule.performanceId === currentSong.performanceId ? { ...schedule, title: archiveForm.performanceTitle.trim() || schedule.title, updatedAt } : schedule),
+        songs: data.songs.map((song) => song.id === currentSong.id ? {
+          ...song,
+          title: archiveForm.songTitle.trim(),
+          durationSeconds: parseSongDuration(archiveForm.duration),
+          teamId: archiveForm.teamId,
+          leaderUserId: leader?.id ?? song.leaderUserId,
+          updatedAt,
+        } : song),
+        songMembers: [...data.songMembers.filter((member) => member.songId !== currentSong.id), ...nextMemberships],
+      });
+    } else {
+      persist({
+        ...data,
+        archiveSongs: data.archiveSongs.map((archive) => archive.id === item.id ? {
+          ...archive,
+          performanceTitle: archiveForm.performanceTitle.trim(),
+          songTitle: archiveForm.songTitle.trim(),
+          durationSeconds: parseSongDuration(archiveForm.duration),
+          teamId: archiveForm.teamId,
+          leaderName: archiveForm.leaderName,
+          memberNames: archiveForm.memberNames,
+          updatedAt,
+        } : archive),
+      });
+    }
+    setEditingArchiveId("");
+  }
+
+  function deleteArchive(item: ArchiveSong) {
+    const currentSong = data.songs.find((song) => item.archiveKey === `current-${song.performanceId}-${song.id}`);
+    const message = currentSong
+      ? `${item.songTitle} 현재 곡과 연결된 이력을 삭제할까요? 원본 곡과 관련 조사·일정도 함께 삭제됩니다.`
+      : `${item.songTitle} 이력 카드를 삭제할까요?`;
+    if (!window.confirm(message)) return;
+    if (!currentSong) {
+      persist({ ...data, archiveSongs: data.archiveSongs.filter((archive) => archive.id !== item.id) });
+      return;
+    }
+    const songSurveyIds = new Set(data.surveys.filter((survey) => survey.songId === currentSong.id).map((survey) => survey.id));
+    persist({
+      ...data,
+      performances: data.performances.map((performance) => performance.id === currentSong.performanceId ? { ...performance, runtimeBreaks: (performance.runtimeBreaks ?? []).filter((runtimeBreak) => runtimeBreak.afterSongId !== currentSong.id), updatedAt: nowIso() } : performance),
+      songs: data.songs.filter((song) => song.id !== currentSong.id),
+      songMembers: data.songMembers.filter((member) => member.songId !== currentSong.id),
+      surveys: data.surveys.filter((survey) => survey.songId !== currentSong.id),
+      availabilityResponses: data.availabilityResponses.filter((response) => !songSurveyIds.has(response.surveyId)),
+      ambiguousTimes: data.ambiguousTimes.filter((time) => !songSurveyIds.has(time.surveyId)),
+      practiceCandidates: data.practiceCandidates.filter((candidate) => candidate.songId !== currentSong.id),
+      schedules: data.schedules.filter((schedule) => schedule.songId !== currentSong.id),
+      archiveSongs: data.archiveSongs.filter((archive) => archive.id !== item.id),
+    });
   }
 
   function splitPerformanceTitles(value: string) {
@@ -1122,53 +1303,16 @@ function ArchivePanel({ data, currentUser, persist }: { data: AppData; currentUs
     cancelMerge();
   }
 
-  function importCurrentSongs() {
-    const createdAt = nowIso();
-    const existingKeys = new Set(data.archiveSongs.map((item) => item.archiveKey));
-    const archiveSongs = data.songs.flatMap((song) => {
-      const performance = data.performances.find((item) => item.id === song.performanceId);
-      if (!performance) return [];
-      const key = `current-${performance.id}-${song.id}`;
-      if (existingKeys.has(key)) return [];
-      const memberNames = data.songMembers
-        .filter((member) => member.songId === song.id)
-        .map((member) => data.users.find((user) => user.id === member.userId)?.name)
-        .filter((name): name is string => Boolean(name));
-      const leaderName = data.users.find((user) => user.id === song.leaderUserId)?.name ?? memberNames[0] ?? "";
-      return [{
-        id: uid("archive"),
-        archiveKey: key,
-        performanceTitle: performance.title,
-        teamId: song.teamId,
-        songTitle: song.title,
-        leaderName,
-        memberNames,
-        years: [2026],
-        source: "현재 진행 곡",
-        createdAt,
-        updatedAt: createdAt,
-      }];
-    });
-    persist({
-      ...data,
-      archiveSongs: [...data.archiveSongs, ...archiveSongs],
-      auditLogs: [...data.auditLogs, createAudit(currentUser, "IMPORT_CURRENT_SONGS_TO_ARCHIVE", "archiveSongs", "current", { songs: archiveSongs.length })],
-    });
-    setQuery("");
-    setSelectedNames([]);
-  }
-
   return (
     <section className="space-y-5">
       <Panel title="과거 공연 이력 DB">
-        <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
+        <div>
           <input
-            className="rounded-2xl border border-white/80 bg-white/70 px-5 py-4 text-sm font-bold outline-none transition placeholder:text-muted-foreground/70 focus:ring-4 focus:ring-primary/15"
+            className="w-full rounded-2xl border border-white/80 bg-white/70 px-5 py-4 text-sm font-bold outline-none transition placeholder:text-muted-foreground/70 focus:ring-4 focus:ring-primary/15"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="공연명, 곡명, 팀원 이름 검색"
           />
-          <button type="button" className="rounded-2xl bg-white/70 px-5 py-4 text-sm font-black shadow-sm" onClick={importCurrentSongs}>현재 곡 이력 추가</button>
         </div>
         <div className="mt-4 space-y-3">
           {selectedNames.length > 0 && (
@@ -1246,16 +1390,17 @@ function ArchivePanel({ data, currentUser, persist }: { data: AppData; currentUs
           {scoredArchives.map(({ item, selectedMatchCount }) => {
             const team = data.teams.find((teamItem) => teamItem.id === item.teamId);
             return (
+              <SwipeActions key={item.id} onEdit={() => beginArchiveEdit(item)} onDelete={() => deleteArchive(item)}>
               <div
-                key={item.id}
-                className="rounded-3xl border p-4 transition hover:-translate-y-0.5 hover:shadow-sm"
+                className="cursor-pointer rounded-3xl border p-4 transition hover:shadow-sm"
                 style={{ borderColor: teamColor(team), backgroundColor: alpha(teamColor(team), "22") }}
-                onDoubleClick={() => beginMerge(item.id)}
+                onClick={() => handleArchiveClick(item)}
+                onDoubleClick={() => handleArchiveDoubleClick(item)}
               >
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <p className="text-lg font-black">{item.songTitle}</p>
-                    <p className="text-sm font-bold text-muted-foreground">{item.performanceTitle} · 팀장 {item.leaderName || "미지정"}</p>
+                    <p className="text-sm font-bold text-muted-foreground">{item.performanceTitle} · 팀장 {item.leaderName || "미지정"}{item.durationSeconds ? ` · ${formatSongDuration(item.durationSeconds)}` : ""}</p>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {selectedNames.length > 0 && <span className="w-fit rounded-full bg-primary/15 px-3 py-1 text-xs font-black text-primary">{selectedMatchCount}/{selectedNames.length}명 일치</span>}
@@ -1269,10 +1414,50 @@ function ArchivePanel({ data, currentUser, persist }: { data: AppData; currentUs
                   })}
                 </div>
               </div>
+              </SwipeActions>
             );
           })}
         </div>
       </Panel>
+      {editingArchiveId && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/20 p-4 backdrop-blur-sm" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setEditingArchiveId("");
+        }}>
+          <section className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-[1.75rem] border border-white/80 bg-card p-6 shadow-2xl dark:border-white/10">
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <h3 className="text-xl font-black">곡 이력 수정</h3>
+              <button type="button" className="rounded-full bg-muted px-4 py-2 text-sm font-black" onClick={() => setEditingArchiveId("")}>닫기</button>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="공연명" value={archiveForm.performanceTitle} onChange={(value) => setArchiveForm({ ...archiveForm, performanceTitle: value })} />
+              <Field label="곡 / 무대 이름" value={archiveForm.songTitle} onChange={(value) => setArchiveForm({ ...archiveForm, songTitle: value })} />
+              <Field label="곡 시간 (선택, 분:초)" value={archiveForm.duration} onChange={(value) => setArchiveForm({ ...archiveForm, duration: value })} placeholder="예: 3:30" />
+              <Select label="소속 팀" value={archiveForm.teamId} onChange={(value) => setArchiveForm({ ...archiveForm, teamId: value })} options={data.teams.map((team) => [team.id, team.name])} />
+            </div>
+            <div className="mt-4 rounded-2xl bg-muted/55 p-4">
+              <p className="mb-3 text-sm font-black">참여 인원 / 팀장</p>
+              <div className="grid max-h-64 gap-2 overflow-auto sm:grid-cols-2">
+                {data.users.map((user) => {
+                  const selected = archiveForm.memberNames.includes(user.name);
+                  return (
+                    <div key={user.id} className="flex items-center justify-between gap-2 rounded-2xl bg-white/55 p-2 dark:bg-white/5">
+                      <UserPill user={user} data={data} />
+                      <div className="flex gap-2">
+                        <SoftCheckbox checked={selected} label="참여" onToggle={() => setArchiveForm((form) => {
+                          const memberNames = selected ? form.memberNames.filter((name) => name !== user.name) : [...form.memberNames, user.name];
+                          return { ...form, memberNames, leaderName: memberNames.includes(form.leaderName) ? form.leaderName : memberNames[0] ?? "" };
+                        })} />
+                        <SoftCheckbox checked={archiveForm.leaderName === user.name} label="팀장" onToggle={() => setArchiveForm((form) => ({ ...form, leaderName: user.name, memberNames: form.memberNames.includes(user.name) ? form.memberNames : [...form.memberNames, user.name] }))} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <PrimaryButton className="mt-5" onClick={saveArchiveEdit}>수정 저장</PrimaryButton>
+          </section>
+        </div>
+      )}
     </section>
   );
 }
@@ -1343,8 +1528,10 @@ function AvailabilityGrid({
   );
 }
 
-function SurveySummaryPanel({ data, surveys, onCreateCandidate }: { data: AppData; surveys: ScheduleSurvey[]; onCreateCandidate: (survey: ScheduleSurvey, recommendation: { date: string; start: string; end: string; count: number; total: number }) => void }) {
+function SurveySummaryPanel({ data, surveys, onCreateCandidate }: { data: AppData; surveys: ScheduleSurvey[]; onCreateCandidate: (survey: ScheduleSurvey, recommendation: { date: string; start: string; end: string; count: number; total: number }) => boolean }) {
   const [recommendationLimits, setRecommendationLimits] = useState<Record<string, number>>({});
+  const [requestDrafts, setRequestDrafts] = useState<Record<string, { date: string; start: string; end: string }>>({});
+  const [requestMessages, setRequestMessages] = useState<Record<string, string>>({});
 
   return (
     <Panel title="조사 결과">
@@ -1357,6 +1544,14 @@ function SurveySummaryPanel({ data, surveys, onCreateCandidate }: { data: AppDat
           const recommendations = getSurveyRecommendations(survey, data);
           const recommendationLimit = recommendationLimits[survey.id] ?? 6;
           const visibleRecommendations = recommendations.slice(0, recommendationLimit);
+          const defaultEnd = minutesToTime(Math.min(timeToMinutes(survey.timeEnd), timeToMinutes(survey.timeStart) + 60));
+          const requestDraft = requestDrafts[survey.id] ?? { date: survey.startDate, start: survey.timeStart, end: defaultEnd };
+          const endOptions = [...times.filter((time) => time > requestDraft.start), survey.timeEnd].filter((time, index, values) => values.indexOf(time) === index);
+          const requestAvailability = getRequestAvailability(survey, data, requestDraft.date, requestDraft.start, requestDraft.end);
+          const setRequestDraft = (partial: Partial<typeof requestDraft>) => {
+            setRequestDrafts((drafts) => ({ ...drafts, [survey.id]: { ...requestDraft, ...partial } }));
+            setRequestMessages((messages) => ({ ...messages, [survey.id]: "" }));
+          };
           return (
             <div key={survey.id} className="rounded-3xl bg-muted/45 p-4">
               <p className="font-black">{survey.title}</p>
@@ -1387,6 +1582,39 @@ function SurveySummaryPanel({ data, surveys, onCreateCandidate }: { data: AppDat
                 </div>
               </div>
               <div className="mt-3 space-y-2">
+                <div className="rounded-2xl border border-primary/15 bg-primary/8 p-3">
+                  <p className="mb-3 text-sm font-black">승인 요청 시간</p>
+                  <div className="grid gap-2 md:grid-cols-3">
+                    <Select label="날짜" value={requestDraft.date} onChange={(date) => setRequestDraft({ date })} options={dates.map((date) => [date, date])} />
+                    <Select
+                      label="시작"
+                      value={requestDraft.start}
+                      onChange={(start) => {
+                        const nextEnd = timeToMinutes(requestDraft.end) > timeToMinutes(start)
+                          ? requestDraft.end
+                          : minutesToTime(Math.min(timeToMinutes(survey.timeEnd), timeToMinutes(start) + survey.slotMinutes));
+                        setRequestDraft({ start, end: nextEnd });
+                      }}
+                      options={times.map((time) => [time, time])}
+                    />
+                    <Select label="종료" value={requestDraft.end} onChange={(end) => setRequestDraft({ end })} options={endOptions.map((time) => [time, time])} />
+                  </div>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs font-black text-muted-foreground">현재 응답 기준 {requestAvailability.count}/{requestAvailability.total}명 가능</p>
+                    <button
+                      type="button"
+                      className="rounded-xl bg-primary px-4 py-3 text-sm font-black text-primary-foreground shadow-sm"
+                      onClick={() => {
+                        const created = onCreateCandidate(survey, { ...requestDraft, ...requestAvailability });
+                        setRequestMessages((messages) => ({ ...messages, [survey.id]: created ? "승인 요청을 보냈습니다." : "같은 시간의 대기 또는 승인 요청이 이미 있습니다." }));
+                      }}
+                    >
+                      승인 요청 보내기
+                    </button>
+                  </div>
+                  {requestMessages[survey.id] && <p className="mt-2 text-xs font-black text-primary">{requestMessages[survey.id]}</p>}
+                </div>
+                <p className="pt-2 text-xs font-black text-muted-foreground">추천 시간</p>
                 <label className="flex items-center justify-between gap-3 rounded-2xl bg-white/45 px-3 py-2 text-xs font-black">
                   <span>추천 개수</span>
                   <input
@@ -1406,8 +1634,8 @@ function SurveySummaryPanel({ data, surveys, onCreateCandidate }: { data: AppDat
                   <button
                     key={`${survey.id}-${item.date}-${item.start}`}
                     type="button"
-                    className="flex w-full items-center justify-between gap-3 rounded-2xl bg-white/65 px-3 py-2 text-left text-sm font-bold transition hover:bg-white"
-                    onClick={() => onCreateCandidate(survey, item)}
+                    className={cn("flex w-full items-center justify-between gap-3 rounded-2xl px-3 py-2 text-left text-sm font-bold transition", requestDraft.date === item.date && requestDraft.start === item.start && requestDraft.end === item.end ? "bg-primary/15 ring-1 ring-primary/30" : "bg-white/65 hover:bg-white")}
+                    onClick={() => setRequestDraft({ date: item.date, start: item.start, end: item.end })}
                   >
                     <span>{item.date} {item.start}-{item.end}</span>
                     <span className="rounded-full bg-primary/20 px-2 py-1 text-xs text-primary">{item.count}/{item.total}명</span>
@@ -1703,7 +1931,14 @@ function getSurveyRecommendations(survey: ScheduleSurvey, data: AppData, duratio
     }
   });
 
-  return recommendations.sort((a, b) => b.count - a.count || a.date.localeCompare(b.date) || a.start.localeCompare(b.start)).slice(0, 6);
+  return recommendations.sort((a, b) => b.count - a.count || a.date.localeCompare(b.date) || a.start.localeCompare(b.start));
+}
+
+function getRequestAvailability(survey: ScheduleSurvey, data: AppData, date: string, start: string, end: string) {
+  const requestedTimes = getSurveyTimes(survey).filter((time) => time >= start && time < end);
+  const responses = data.availabilityResponses.filter((response) => response.surveyId === survey.id);
+  const availableCount = responses.filter((response) => requestedTimes.length > 0 && requestedTimes.every((time) => response.slots.some((slot) => slot.date === date && slot.time === time && slot.available))).length;
+  return { count: availableCount, total: responses.length };
 }
 
 function getSongUserIds(songId: string, data: AppData) {
@@ -1774,8 +2009,8 @@ function SoftCheckbox({ checked, label, onToggle, className }: { checked: boolea
   );
 }
 
-function Field({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (value: string) => void; type?: string }) {
-  return <label className="block text-base font-bold">{label}<input className="mt-1 w-full rounded-2xl border border-white/80 bg-card/80 px-5 py-4 outline-none transition focus:ring-4 focus:ring-primary/15 dark:border-white/10" type={type} value={value} onChange={(event) => onChange(event.target.value)} /></label>;
+function Field({ label, value, onChange, type = "text", placeholder }: { label: string; value: string; onChange: (value: string) => void; type?: string; placeholder?: string }) {
+  return <label className="block text-base font-bold">{label}<input className="mt-1 w-full rounded-2xl border border-white/80 bg-card/80 px-5 py-4 outline-none transition focus:ring-4 focus:ring-primary/15 dark:border-white/10" type={type} value={value} placeholder={placeholder} onChange={(event) => onChange(event.target.value)} /></label>;
 }
 
 function ColorField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
@@ -1873,6 +2108,78 @@ function Select({ label, value, onChange, options }: { label: string; value: str
 
 function Panel({ title, children, className }: { title: string; children: React.ReactNode; className?: string }) {
   return <section className={cn("rounded-[1.75rem] border border-white/70 bg-white/84 p-6 shadow-[0_18px_60px_rgba(86,144,183,0.10)] backdrop-blur dark:border-white/10 dark:bg-card/82", className)}><h3 className="mb-5 text-xl font-black">{title}</h3>{children}</section>;
+}
+
+function SwipeActions({ children, onEdit, onDelete }: { children: React.ReactNode; onEdit: () => void; onDelete: () => void }) {
+  const [offset, setOffset] = useState(0);
+  const startX = useRef<number | null>(null);
+  const startOffset = useRef(0);
+  const moved = useRef(false);
+  const actionWidth = 132;
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    startX.current = event.clientX;
+    startOffset.current = offset;
+    moved.current = false;
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (startX.current === null) return;
+    const distance = event.clientX - startX.current;
+    if (Math.abs(distance) > 8) {
+      moved.current = true;
+      if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
+    }
+    setOffset(Math.max(-actionWidth, Math.min(0, startOffset.current + distance)));
+  }
+
+  function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (startX.current === null) return;
+    const finalOffset = Math.max(-actionWidth, Math.min(0, startOffset.current + event.clientX - startX.current));
+    setOffset(finalOffset < -42 ? -actionWidth : 0);
+    startX.current = null;
+  }
+
+  function handlePointerCancel() {
+    setOffset(0);
+    startX.current = null;
+  }
+
+  return (
+    <div className="relative overflow-hidden rounded-3xl">
+      <div
+        className="absolute inset-y-0 right-0 flex w-[132px] overflow-hidden rounded-r-3xl transition-opacity duration-150"
+        style={{ opacity: offset < 0 ? 1 : 0, pointerEvents: offset < 0 ? "auto" : "none" }}
+        aria-hidden={offset === 0}
+      >
+        <button type="button" className="grid flex-1 place-items-center bg-primary text-primary-foreground" aria-label="수정" onClick={() => { setOffset(0); onEdit(); }}>
+          <Pencil size={18} />
+        </button>
+        <button type="button" className="grid flex-1 place-items-center bg-destructive text-destructive-foreground" aria-label="삭제" onClick={() => { setOffset(0); onDelete(); }}>
+          <Trash2 size={18} />
+        </button>
+      </div>
+      <div
+        className="relative touch-pan-y transition-transform duration-200"
+        style={{ transform: `translateX(${offset}px)` }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+        onClickCapture={(event) => {
+          if (moved.current) {
+            event.preventDefault();
+            event.stopPropagation();
+            moved.current = false;
+          }
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
 }
 
 function TwoColumn({ children }: { children: React.ReactNode }) {
@@ -2186,11 +2493,17 @@ function PerformanceDetailV2({ data, currentUser, performance, persist }: { data
   const [description, setDescription] = useState(performance.description ?? "");
   const [noticeText, setNoticeText] = useState("");
   const [songTitle, setSongTitle] = useState("");
+  const [songDuration, setSongDuration] = useState("");
   const [songTeamId, setSongTeamId] = useState(data.teams[0]?.id ?? "");
   const [songMemberIds, setSongMemberIds] = useState<string[]>([]);
   const [leaderIds, setLeaderIds] = useState<string[]>([]);
   const [editingSongId, setEditingSongId] = useState<string | null>(null);
-  const [editSongForm, setEditSongForm] = useState({ title: "", teamId: "", memberIds: [] as string[], leaderUserId: "" });
+  const [orderingSongId, setOrderingSongId] = useState<string | null>(null);
+  const [selectedRuntimeSongIds, setSelectedRuntimeSongIds] = useState<string[]>([]);
+  const [transitionInput, setTransitionInput] = useState(String(performance.transitionSeconds ?? 5));
+  const [breakAfterSongId, setBreakAfterSongId] = useState("");
+  const [breakDuration, setBreakDuration] = useState("10:00");
+  const [editSongForm, setEditSongForm] = useState({ title: "", duration: "", teamId: "", memberIds: [] as string[], leaderUserId: "" });
   const [editingMembers, setEditingMembers] = useState(false);
   const [draftMemberIds, setDraftMemberIds] = useState<string[]>(performanceMemberIds);
   const [performanceMemberSearch, setPerformanceMemberSearch] = useState("");
@@ -2213,16 +2526,77 @@ function PerformanceDetailV2({ data, currentUser, performance, persist }: { data
       return matchesTeam && matchesSearch;
     });
   }, [data.teams, performanceMembers, songMemberSearch, songMemberTeamFilter]);
+  const orderedSongs = songs.slice().sort((a, b) => a.order - b.order);
+  const selectedRuntimeSongs = orderedSongs.filter((song) => selectedRuntimeSongIds.includes(song.id));
+  const songRuntimeSeconds = selectedRuntimeSongs.reduce((total, song) => total + (song.durationSeconds ?? 0), 0);
+  const missingRuntimeCount = selectedRuntimeSongs.filter((song) => !song.durationSeconds).length;
+  const runtimeBreaks = performance.runtimeBreaks ?? [];
+  const runtimeParts = selectedRuntimeSongs.slice(0, -1).reduce((result, song) => {
+    const runtimeBreak = runtimeBreaks.find((item) => item.afterSongId === song.id);
+    if (runtimeBreak) return { ...result, breakSeconds: result.breakSeconds + runtimeBreak.durationSeconds };
+    return { ...result, transitionCount: result.transitionCount + 1 };
+  }, { transitionCount: 0, breakSeconds: 0 });
+  const transitionSeconds = Math.max(0, performance.transitionSeconds ?? 5);
+  const transitionRuntimeSeconds = runtimeParts.transitionCount * transitionSeconds;
+  const selectedRuntimeSeconds = songRuntimeSeconds + transitionRuntimeSeconds + runtimeParts.breakSeconds;
 
   useEffect(() => {
     setDescription(performance.description ?? "");
     setDraftMemberIds(performance.memberIds ?? []);
     setEditingMembers(false);
     setPerformanceMemberSearch("");
-  }, [performance]);
+    setSelectedRuntimeSongIds([]);
+    setTransitionInput(String(performance.transitionSeconds ?? 5));
+    setBreakAfterSongId(songs.slice().sort((a, b) => a.order - b.order)[0]?.id ?? "");
+    setBreakDuration("10:00");
+  }, [performance.id]);
+
+  useEffect(() => {
+    setSelectedRuntimeSongIds((ids) => {
+      const next = ids.filter((id) => data.songs.some((song) => song.performanceId === performance.id && song.id === id));
+      return next.length === ids.length ? ids : next;
+    });
+  }, [data.songs, performance.id]);
 
   function updatePerformance(partial: Partial<Performance>) {
     persist({ ...data, performances: data.performances.map((item) => (item.id === performance.id ? { ...item, ...partial, updatedAt: nowIso() } : item)) });
+  }
+
+  function saveTransitionSeconds() {
+    const seconds = Math.max(0, Math.floor(Number(transitionInput) || 0));
+    setTransitionInput(String(seconds));
+    updatePerformance({ transitionSeconds: seconds });
+  }
+
+  function saveRuntimeBreak() {
+    const durationSeconds = parseSongDuration(breakDuration);
+    if (!breakAfterSongId || !durationSeconds) return;
+    const nextBreaks = [
+      ...runtimeBreaks.filter((item) => item.afterSongId !== breakAfterSongId),
+      { afterSongId: breakAfterSongId, durationSeconds },
+    ];
+    updatePerformance({ runtimeBreaks: nextBreaks });
+  }
+
+  function removeRuntimeBreak(afterSongId: string) {
+    updatePerformance({ runtimeBreaks: runtimeBreaks.filter((item) => item.afterSongId !== afterSongId) });
+  }
+
+  function changeSongOrder(songId: string, position: number) {
+    const movingSong = orderedSongs.find((song) => song.id === songId);
+    if (!movingSong) return;
+    const reordered = orderedSongs.filter((song) => song.id !== songId);
+    reordered.splice(Math.max(0, Math.min(position - 1, reordered.length)), 0, movingSong);
+    const orderById = new Map(reordered.map((song, index) => [song.id, index + 1]));
+    const updatedAt = nowIso();
+    persist({
+      ...data,
+      songs: data.songs.map((song) => {
+        const order = orderById.get(song.id);
+        return order === undefined || order === song.order ? song : { ...song, order, updatedAt };
+      }),
+    });
+    setOrderingSongId(null);
   }
 
   function togglePerformanceMember(userId: string) {
@@ -2246,10 +2620,11 @@ function PerformanceDetailV2({ data, currentUser, performance, persist }: { data
     if (!songTitle.trim() || songMemberIds.length === 0) return;
     const createdAt = nowIso();
     const leaderUserId = leaderIds[0] ?? songMemberIds[0];
-    const song: Song = { id: uid("song"), performanceId: performance.id, teamId: songTeamId, title: songTitle, leaderUserId, requiredPracticeCount: 0, estimatedPracticeMinutes: 120, order: data.songs.length + 1, status: "ACTIVE", createdAt, updatedAt: createdAt };
+    const song: Song = { id: uid("song"), performanceId: performance.id, teamId: songTeamId, title: songTitle, durationSeconds: parseSongDuration(songDuration), leaderUserId, requiredPracticeCount: 0, estimatedPracticeMinutes: 120, order: data.songs.length + 1, status: "ACTIVE", createdAt, updatedAt: createdAt };
     const memberships: SongMember[] = songMemberIds.map((userId) => ({ id: uid("member"), performanceId: performance.id, songId: song.id, userId, joinedAt: createdAt }));
     persist({ ...data, songs: [...data.songs, song], songMembers: [...data.songMembers, ...memberships], auditLogs: [...data.auditLogs, createAudit(currentUser, "CREATE_SONG", "songs", song.id, song)] });
     setSongTitle("");
+    setSongDuration("");
     setSongMemberIds([]);
     setLeaderIds([]);
   }
@@ -2257,7 +2632,7 @@ function PerformanceDetailV2({ data, currentUser, performance, persist }: { data
   function startEditSong(song: Song) {
     const memberIds = data.songMembers.filter((member) => member.songId === song.id).map((member) => member.userId);
     setEditingSongId(song.id);
-    setEditSongForm({ title: song.title, teamId: song.teamId, memberIds, leaderUserId: song.leaderUserId });
+    setEditSongForm({ title: song.title, duration: formatSongDuration(song.durationSeconds), teamId: song.teamId, memberIds, leaderUserId: song.leaderUserId });
   }
 
   function saveSongEdit(songId: string) {
@@ -2268,7 +2643,7 @@ function PerformanceDetailV2({ data, currentUser, performance, persist }: { data
     const updatedSong = data.songs.find((song) => song.id === songId);
     persist({
       ...data,
-      songs: data.songs.map((song) => song.id === songId ? { ...song, title: editSongForm.title, teamId: editSongForm.teamId, leaderUserId, updatedAt } : song),
+      songs: data.songs.map((song) => song.id === songId ? { ...song, title: editSongForm.title, durationSeconds: parseSongDuration(editSongForm.duration), teamId: editSongForm.teamId, leaderUserId, updatedAt } : song),
       songMembers: [...data.songMembers.filter((member) => member.songId !== songId), ...nextMemberships],
       auditLogs: updatedSong ? [...data.auditLogs, createAudit(currentUser, "UPDATE_SONG", "songs", songId, { ...updatedSong, ...editSongForm, leaderUserId })] : data.auditLogs,
     });
@@ -2282,6 +2657,7 @@ function PerformanceDetailV2({ data, currentUser, performance, persist }: { data
     if (!ok) return;
     persist({
       ...data,
+      performances: data.performances.map((item) => item.id === performance.id ? { ...item, runtimeBreaks: (item.runtimeBreaks ?? []).filter((runtimeBreak) => runtimeBreak.afterSongId !== songId), updatedAt: nowIso() } : item),
       songs: data.songs.filter((song) => song.id !== songId),
       songMembers: data.songMembers.filter((member) => member.songId !== songId),
       surveys: data.surveys.filter((survey) => survey.songId !== songId),
@@ -2336,6 +2712,7 @@ function PerformanceDetailV2({ data, currentUser, performance, persist }: { data
           <div className="space-y-3">
             <Select label="소속 팀" value={songTeamId} onChange={setSongTeamId} options={data.teams.map((team) => [team.id, team.name])} />
             <Field label="곡 / 무대 이름" value={songTitle} onChange={setSongTitle} />
+            <Field label="곡 시간 (선택, 분:초)" value={songDuration} onChange={setSongDuration} placeholder="예: 3:30" />
             <div className="rounded-2xl bg-muted/50 p-3">
               <p className="mb-3 text-sm font-black">곡 참여 인원 / 팀장</p>
               <input
@@ -2388,32 +2765,154 @@ function PerformanceDetailV2({ data, currentUser, performance, persist }: { data
         </Panel>
       </div>
       <Panel title="생성된 공연 곡" className="mt-5 shadow-none">
+        <div className="mb-5 flex flex-col gap-4 rounded-3xl border border-primary/15 bg-primary/10 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-lg shadow-primary/20">
+              <Clock3 size={20} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-black text-primary">선택 곡 러닝타임</p>
+              <p className="mt-0.5 text-xs font-bold text-muted-foreground">
+                {selectedRuntimeSongs.length > 0 ? `${selectedRuntimeSongs.length}/${songs.length}곡 선택` : "아래 곡 카드를 선택해주세요"}
+                {missingRuntimeCount > 0 ? ` · 시간 미입력 ${missingRuntimeCount}곡 제외` : ""}
+              </p>
+              {selectedRuntimeSongs.length > 0 && (
+                <p className="mt-1 text-xs font-bold text-muted-foreground">
+                  곡 {formatTotalDuration(songRuntimeSeconds)} · 입퇴장 {formatTotalDuration(transitionRuntimeSeconds)} · 쉬는시간 {formatTotalDuration(runtimeParts.breakSeconds)}
+                </p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-3 sm:justify-end">
+            <div className="flex rounded-2xl bg-white/65 p-1 dark:bg-white/5">
+              <button type="button" className="rounded-xl px-3 py-2 text-xs font-black text-muted-foreground transition hover:bg-white/80" onClick={() => setSelectedRuntimeSongIds(orderedSongs.map((song) => song.id))}>전체</button>
+              <button type="button" className="rounded-xl px-3 py-2 text-xs font-black text-muted-foreground transition hover:bg-white/80" onClick={() => setSelectedRuntimeSongIds([])}>해제</button>
+            </div>
+            <p className="whitespace-nowrap text-xl font-black tabular-nums">{formatTotalDuration(selectedRuntimeSeconds)}</p>
+          </div>
+        </div>
+        <div className="mb-5 grid gap-3 rounded-3xl bg-muted/45 p-4 lg:grid-cols-[minmax(220px,0.75fr)_minmax(0,1.5fr)]">
+          <div className="rounded-2xl bg-white/55 p-4 dark:bg-white/5">
+            <p className="mb-3 text-sm font-black">곡 사이 입퇴장</p>
+            <div className="flex items-end gap-2">
+              <label className="min-w-0 flex-1 text-xs font-black text-muted-foreground">
+                시간(초)
+                <input
+                  className="mt-1 w-full rounded-xl border border-white/80 bg-white/75 px-3 py-2.5 text-base font-black text-foreground outline-none focus:ring-4 focus:ring-primary/15 dark:border-white/10 dark:bg-white/5"
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  value={transitionInput}
+                  onChange={(event) => setTransitionInput(event.target.value)}
+                />
+              </label>
+              <button type="button" className="rounded-xl bg-primary px-4 py-2.5 text-sm font-black text-primary-foreground" onClick={saveTransitionSeconds}>저장</button>
+            </div>
+          </div>
+          <div className="rounded-2xl bg-white/55 p-4 dark:bg-white/5">
+            <p className="mb-3 text-sm font-black">쉬는시간</p>
+            {orderedSongs.length > 1 ? (
+              <>
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_120px_auto] sm:items-end">
+                  <Select label="이 곡 뒤" value={breakAfterSongId || orderedSongs[0]?.id || ""} onChange={setBreakAfterSongId} options={orderedSongs.slice(0, -1).map((song) => [song.id, song.title])} />
+                  <Field label="시간" value={breakDuration} onChange={setBreakDuration} placeholder="10:00" />
+                  <button type="button" className="rounded-xl bg-primary px-4 py-4 text-sm font-black text-primary-foreground" onClick={saveRuntimeBreak}>추가</button>
+                </div>
+                {runtimeBreaks.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {runtimeBreaks.map((runtimeBreak) => {
+                      const song = songs.find((item) => item.id === runtimeBreak.afterSongId);
+                      if (!song) return null;
+                      return (
+                        <button key={runtimeBreak.afterSongId} type="button" className="inline-flex items-center gap-2 rounded-full bg-primary/12 px-3 py-2 text-xs font-black text-primary" onClick={() => removeRuntimeBreak(runtimeBreak.afterSongId)}>
+                          {song.title} 뒤 · {formatSongDuration(runtimeBreak.durationSeconds)}
+                          <Trash2 size={13} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            ) : (
+              <p className="text-sm font-bold text-muted-foreground">곡이 2개 이상일 때 설정할 수 있습니다.</p>
+            )}
+          </div>
+        </div>
         <div className="grid gap-3">
-          {songs.map((song) => {
+          {orderedSongs.map((song, songIndex) => {
             const team = data.teams.find((item) => item.id === song.teamId);
             const members = data.songMembers.filter((member) => member.songId === song.id).map((member) => data.users.find((user) => user.id === member.userId)).filter(Boolean) as ClubUser[];
             const editing = editingSongId === song.id;
-            return (
-              <div key={song.id} className="rounded-3xl border p-4" style={{ borderColor: teamColor(team), backgroundColor: alpha(teamColor(team), "22") }}>
-                {!editing ? (
-                  <>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-lg font-black">{song.title}</p>
-                        <p className="text-sm text-muted-foreground">{team?.name ?? "팀 없음"} · 팀장 {data.users.find((user) => user.id === song.leaderUserId)?.name ?? "미지정"}</p>
+            const selectedForRuntime = selectedRuntimeSongIds.includes(song.id);
+            if (!editing) {
+              return (
+                <SwipeActions key={song.id} onEdit={() => startEditSong(song)} onDelete={() => deleteSong(song.id)}>
+                  <div
+                    className="relative cursor-pointer rounded-3xl border p-4 pl-16 pr-14 transition"
+                    style={{
+                      borderColor: teamColor(team),
+                      backgroundColor: alpha(teamColor(team), selectedForRuntime ? "38" : "22"),
+                      boxShadow: selectedForRuntime ? `inset 0 0 0 2px ${alpha(teamColor(team), "70")}` : undefined,
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={selectedForRuntime}
+                    onClick={() => setSelectedRuntimeSongIds((ids) => ids.includes(song.id) ? ids.filter((id) => id !== song.id) : [...ids, song.id])}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      event.preventDefault();
+                      setSelectedRuntimeSongIds((ids) => ids.includes(song.id) ? ids.filter((id) => id !== song.id) : [...ids, song.id]);
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className={cn("absolute left-4 top-4 grid h-9 w-9 place-items-center rounded-xl border text-sm font-black tabular-nums transition", orderingSongId === song.id ? "border-primary bg-primary text-primary-foreground" : "border-primary/20 bg-white/65 text-primary hover:bg-white")}
+                      aria-label={`${song.title} 순서 변경`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setOrderingSongId((id) => id === song.id ? null : song.id);
+                      }}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
+                      {songIndex + 1}
+                    </button>
+                    <span className={cn("absolute right-4 top-4 grid h-7 w-7 place-items-center rounded-full border transition", selectedForRuntime ? "border-primary bg-primary text-primary-foreground" : "border-primary/25 bg-white/55 text-transparent")}>
+                      <Check size={15} strokeWidth={3} />
+                    </span>
+                    <p className="text-lg font-black">{song.title}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {team?.name ?? "팀 없음"} · 팀장 {data.users.find((user) => user.id === song.leaderUserId)?.name ?? "미지정"}
+                      {song.durationSeconds ? ` · ${formatSongDuration(song.durationSeconds)}` : ""}
+                    </p>
+                    {orderingSongId === song.id && (
+                      <div className="mt-3 flex flex-wrap gap-2 rounded-2xl bg-white/55 p-3 dark:bg-white/5" onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                        {orderedSongs.map((_, index) => {
+                          const position = index + 1;
+                          return (
+                            <button
+                              key={position}
+                              type="button"
+                              className={cn("grid h-9 w-9 place-items-center rounded-xl text-xs font-black tabular-nums transition", position === songIndex + 1 ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary hover:bg-primary/20")}
+                              onClick={() => changeSongOrder(song.id, position)}
+                            >
+                              {position}
+                            </button>
+                          );
+                        })}
                       </div>
-                      <div className="flex shrink-0 gap-2">
-                        <button type="button" className="rounded-full bg-white/70 px-3 py-2 text-xs font-black shadow-sm" onClick={() => startEditSong(song)}>수정</button>
-                        <button type="button" className="rounded-full bg-destructive/10 px-3 py-2 text-xs font-black text-destructive" onClick={() => deleteSong(song.id)}>삭제</button>
-                      </div>
-                    </div>
+                    )}
                     <div className="mt-3 flex flex-wrap gap-2">
                       {members.map((user) => <UserPill key={user.id} user={user} data={data} />)}
                     </div>
-                  </>
-                ) : (
+                  </div>
+                </SwipeActions>
+              );
+            }
+            return (
+              <div key={song.id} className="rounded-3xl border p-4" style={{ borderColor: teamColor(team), backgroundColor: alpha(teamColor(team), "22") }}>
                   <div className="space-y-3">
                     <Field label="곡 / 무대 이름" value={editSongForm.title} onChange={(value) => setEditSongForm({ ...editSongForm, title: value })} />
+                    <Field label="곡 시간 (선택, 분:초)" value={editSongForm.duration} onChange={(value) => setEditSongForm({ ...editSongForm, duration: value })} placeholder="예: 3:30" />
                     <Select label="소속 팀" value={editSongForm.teamId} onChange={(value) => setEditSongForm({ ...editSongForm, teamId: value })} options={data.teams.map((item) => [item.id, item.name])} />
                     <div className="rounded-2xl bg-white/45 p-3">
                       <p className="mb-2 text-sm font-black">곡 참여 인원 / 팀장</p>
@@ -2443,7 +2942,6 @@ function PerformanceDetailV2({ data, currentUser, performance, persist }: { data
                       <button type="button" className="rounded-2xl bg-white/70 px-4 py-3 text-sm font-black" onClick={() => setEditingSongId(null)}>취소</button>
                     </div>
                   </div>
-                )}
               </div>
             );
           })}

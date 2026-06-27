@@ -39,6 +39,11 @@ export type Performance = {
   endsAt: string;
   location?: string;
   memberIds: string[];
+  transitionSeconds?: number;
+  runtimeBreaks?: Array<{
+    afterSongId: string;
+    durationSeconds: number;
+  }>;
   status: PerformanceStatus;
   createdBy: string;
   createdAt: string;
@@ -51,6 +56,7 @@ export type Song = {
   teamId: string;
   title: string;
   artist?: string;
+  durationSeconds?: number;
   leaderUserId: string;
   requiredPracticeCount: number;
   estimatedPracticeMinutes: number;
@@ -76,6 +82,7 @@ export type ArchiveSong = {
   songTitle: string;
   leaderName: string;
   memberNames: string[];
+  durationSeconds?: number;
   years?: number[];
   source?: string;
   createdAt: string;

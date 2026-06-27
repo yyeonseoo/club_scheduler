@@ -1,4 +1,4 @@
-import type { AppData, ArchiveSong, AuditLog, ClubUser, ScheduleSurvey, Team } from "@/types/domain";
+import type { AppData, ArchiveSong, AuditLog, ClubUser, Performance, ScheduleSurvey, Song, SongMember, Team } from "@/types/domain";
 import { uid } from "@/lib/utils";
 
 export const STORAGE_KEY = "club-scheduler-local-data-v4";
@@ -16,6 +16,27 @@ type DanceArchiveRow = {
   songTitle: string;
   memberNames: readonly string[];
 };
+
+type CurrentSongRow = {
+  title: string;
+  memberNames: readonly string[];
+  durationSeconds: number;
+};
+
+const currentRap515DayRows: readonly CurrentSongRow[] = [
+  { title: "Flip flap", memberNames: ["전규민", "유현성", "서민규"], durationSeconds: 161 },
+  { title: "quit it", memberNames: ["정윤철", "전규민"], durationSeconds: 123 },
+  { title: "drive me crazy", memberNames: ["정윤철", "고강희"], durationSeconds: 204 },
+  { title: "Wake up again", memberNames: ["정윤철"], durationSeconds: 162 },
+  { title: "Don't call me", memberNames: ["정윤철", "최승혜"], durationSeconds: 171 },
+  { title: "chocolate attack", memberNames: ["윤성혁", "박하민"], durationSeconds: 132 },
+  { title: "elastic love", memberNames: ["박하민", "박현태"], durationSeconds: 205 },
+  { title: "뱅어", memberNames: ["정세훈", "문정인"], durationSeconds: 148 },
+  { title: "Where u at?", memberNames: ["유현성", "서민규"], durationSeconds: 110 },
+  { title: "Rap0rtrap", memberNames: ["유현성", "정윤철", "전규민"], durationSeconds: 202 },
+  { title: "Bloodhound", memberNames: ["유현성", "정윤철"], durationSeconds: 166 },
+  { title: "hit u up", memberNames: ["정윤철", "전규민"], durationSeconds: 225 },
+];
 
 const completedDanceArchive2025Rows: readonly DanceArchiveRow[] = [
   { performanceTitle: "515DAY", songTitle: "With the IE (way up)", memberNames: ["노영훈", "이지용"] },
@@ -146,6 +167,7 @@ export function readData(): AppData {
   const normalizedData: AppData = {
     ...parsed,
     archiveSongs: dedupeArchiveSongs(parsed.archiveSongs ?? []),
+    practiceCandidates: dedupePracticeCandidates(parsed.practiceCandidates ?? []),
     performances: parsed.performances.map((performance) => ({ ...performance, memberIds: performance.memberIds ?? [] })),
     users: parsed.users.map((user) => ({
       ...user,
@@ -161,9 +183,21 @@ export function readData(): AppData {
     "2026 춤팀 완료 곡",
   );
   const aliasNormalizedData = normalizeMemberAliases(completedArchiveData);
-  const migratedData = { ...aliasNormalizedData, archiveSongs: dedupeArchiveSongs(aliasNormalizedData.archiveSongs) };
+  const currentRapData = withCurrentRap515Day(aliasNormalizedData);
+  const currentArchiveData = syncCurrentSongsToArchive(currentRapData);
+  const migratedData = { ...currentArchiveData, archiveSongs: dedupeArchiveSongs(currentArchiveData.archiveSongs) };
   if (JSON.stringify(migratedData) !== JSON.stringify(normalizedData)) writeData(migratedData);
   return migratedData;
+}
+
+function dedupePracticeCandidates(candidates: AppData["practiceCandidates"]) {
+  const seen = new Set<string>();
+  return candidates.filter((candidate) => {
+    const key = `${candidate.songId}::${candidate.startsAt}::${candidate.endsAt}::${candidate.status}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function inferActiveYears(user: ClubUser, archiveMemberNames: Set<string>, activeCurrentUserIds: Set<string>) {
@@ -190,6 +224,58 @@ function dedupeArchiveSongs(archiveSongs: ArchiveSong[]) {
     seen.add(key);
     return true;
   });
+}
+
+export function syncCurrentSongsToArchive(data: AppData): AppData {
+  const existingByKey = new Map(data.archiveSongs.map((song) => [song.archiveKey, song]));
+  const currentArchives = data.songs.flatMap((song) => {
+    const performance = data.performances.find((item) => item.id === song.performanceId);
+    if (!performance) return [];
+
+    const archiveKey = `current-${performance.id}-${song.id}`;
+    const existing = existingByKey.get(archiveKey);
+    const memberNames = Array.from(new Set(
+      data.songMembers
+        .filter((member) => member.songId === song.id)
+        .map((member) => data.users.find((user) => user.id === member.userId)?.name)
+        .filter((name): name is string => Boolean(name)),
+    ));
+    const leaderName = data.users.find((user) => user.id === song.leaderUserId)?.name ?? memberNames[0] ?? "";
+    const comparable = {
+      performanceTitle: performance.title,
+      teamId: song.teamId,
+      songTitle: song.title,
+      leaderName,
+      memberNames,
+      durationSeconds: song.durationSeconds,
+      years: [2026],
+      source: "현재 진행 곡",
+    };
+    const unchanged = existing
+      && existing.performanceTitle === comparable.performanceTitle
+      && existing.teamId === comparable.teamId
+      && existing.songTitle === comparable.songTitle
+      && existing.leaderName === comparable.leaderName
+      && JSON.stringify(existing.memberNames) === JSON.stringify(comparable.memberNames)
+      && existing.durationSeconds === comparable.durationSeconds
+      && JSON.stringify(existing.years) === JSON.stringify(comparable.years)
+      && existing.source === comparable.source;
+
+    return [{
+      ...existing,
+      id: existing?.id ?? `archive_current_${song.id}`,
+      archiveKey,
+      ...comparable,
+      createdAt: existing?.createdAt ?? song.createdAt,
+      updatedAt: unchanged ? existing.updatedAt : song.updatedAt,
+    } satisfies ArchiveSong];
+  });
+
+  const currentKeys = new Set(currentArchives.map((song) => song.archiveKey));
+  const archivedOnly = data.archiveSongs.filter((song) => !song.archiveKey.startsWith("current-") && !currentKeys.has(song.archiveKey));
+  const archiveSongs = [...archivedOnly, ...currentArchives];
+
+  return { ...data, archiveSongs };
 }
 
 function canonicalMemberName(name: string) {
@@ -259,6 +345,124 @@ function normalizeMemberAliases(data: AppData): AppData {
       leaderName: canonicalMemberName(song.leaderName),
       memberNames: Array.from(new Set(song.memberNames.map(canonicalMemberName))),
     })),
+  };
+}
+
+function normalizeSongTitle(value: string) {
+  return value.toLocaleLowerCase("en").replace(/\s+/g, "").trim();
+}
+
+function withCurrentRap515Day(data: AppData): AppData {
+  const createdAt = now();
+  const rapTeam = data.teams.find((team) => team.name === "랩") ?? {
+    id: "team_rap",
+    name: "랩",
+    color: "#B8C8F8",
+    order: data.teams.length + 1,
+    isActive: true,
+    createdAt,
+    updatedAt: createdAt,
+  } satisfies Team;
+  const hasRapTeam = data.teams.some((team) => team.id === rapTeam.id);
+  const existingPerformance = data.performances.find((performance) => normalizeSongTitle(performance.title) === normalizeSongTitle("515DAY"));
+  const fallbackEndsAt = new Date(new Date(createdAt).getTime() + 2 * 60 * 60 * 1000).toISOString();
+  const performance: Performance = existingPerformance ?? {
+    id: "performance_2026_515day",
+    title: "515DAY",
+    description: "",
+    color: "#7BC7F2",
+    startsAt: createdAt,
+    endsAt: fallbackEndsAt,
+    location: "",
+    memberIds: [],
+    status: "ACTIVE",
+    createdBy: data.users.find((user) => user.role === "SUPER_ADMIN")?.id ?? data.users[0]?.id ?? "system",
+    createdAt,
+    updatedAt: createdAt,
+  };
+  const allMemberNames = new Set(currentRap515DayRows.flatMap((row) => row.memberNames));
+  const users = data.users.map((user) => {
+    if (!allMemberNames.has(user.name)) return user;
+    const activeYears = Array.from(new Set([...(user.activeYears ?? []), 2026])).sort();
+    const changed = user.teamId !== rapTeam.id || activeYears.length !== (user.activeYears ?? []).length;
+    return changed ? { ...user, teamId: rapTeam.id, activeYears, updatedAt: createdAt } : user;
+  });
+  const existingNames = new Set(users.map((user) => user.name));
+  const missingUsers: ClubUser[] = Array.from(allMemberNames)
+    .filter((name) => !existingNames.has(name))
+    .map((name, index) => ({
+      id: `user_2026_515day_rap_${index + 1}`,
+      username: name,
+      password: "1234",
+      name,
+      teamId: rapTeam.id,
+      teamColor: rapTeam.color,
+      performanceColors: {},
+      activeYears: [2026],
+      role: "USER",
+      mustChangePassword: true,
+      status: "ACTIVE",
+      createdAt,
+      updatedAt: createdAt,
+    }));
+  const allUsers = [...users, ...missingUsers];
+  const userByName = new Map(allUsers.map((user) => [user.name, user]));
+  const performanceSongs = data.songs.filter((song) => song.performanceId === performance.id);
+  const targetSongIds = new Set<string>();
+  const targetSongs: Song[] = currentRap515DayRows.map((row, index) => {
+    const existing = performanceSongs.find((song) => normalizeSongTitle(song.title) === normalizeSongTitle(row.title));
+    const memberIds = row.memberNames.map((name) => userByName.get(name)?.id).filter((id): id is string => Boolean(id));
+    const leaderUserId = memberIds[0] ?? existing?.leaderUserId ?? "";
+    const songId = existing?.id ?? `song_2026_515day_rap_${index + 1}`;
+    targetSongIds.add(songId);
+    const unchanged = existing
+      && existing.title === row.title
+      && existing.teamId === rapTeam.id
+      && existing.durationSeconds === row.durationSeconds
+      && existing.leaderUserId === leaderUserId;
+    return {
+      ...existing,
+      id: songId,
+      performanceId: performance.id,
+      teamId: rapTeam.id,
+      title: row.title,
+      durationSeconds: row.durationSeconds,
+      leaderUserId,
+      requiredPracticeCount: existing?.requiredPracticeCount ?? 0,
+      estimatedPracticeMinutes: existing?.estimatedPracticeMinutes ?? 120,
+      order: existing?.order ?? data.songs.length + index + 1,
+      status: existing?.status ?? "ACTIVE",
+      createdAt: existing?.createdAt ?? createdAt,
+      updatedAt: unchanged ? existing.updatedAt : createdAt,
+    };
+  });
+  const targetMemberships: SongMember[] = currentRap515DayRows.flatMap((row, rowIndex) => {
+    const song = targetSongs[rowIndex];
+    return row.memberNames.flatMap((name, memberIndex) => {
+      const user = userByName.get(name);
+      if (!user) return [];
+      return [{
+        id: `song_member_2026_515day_rap_${rowIndex + 1}_${memberIndex + 1}`,
+        performanceId: performance.id,
+        songId: song.id,
+        userId: user.id,
+        joinedAt: song.createdAt,
+      }];
+    });
+  });
+  const memberIds = Array.from(new Set([...(performance.memberIds ?? []), ...targetMemberships.map((membership) => membership.userId)]));
+  const performanceChanged = memberIds.length !== (performance.memberIds ?? []).length;
+  const nextPerformance = performanceChanged ? { ...performance, memberIds, updatedAt: createdAt } : performance;
+
+  return {
+    ...data,
+    teams: hasRapTeam ? data.teams : [...data.teams, rapTeam],
+    users: allUsers,
+    performances: existingPerformance
+      ? data.performances.map((item) => item.id === performance.id ? nextPerformance : item)
+      : [...data.performances, nextPerformance],
+    songs: [...data.songs.filter((song) => !targetSongIds.has(song.id)), ...targetSongs],
+    songMembers: [...data.songMembers.filter((membership) => !targetSongIds.has(membership.songId)), ...targetMemberships],
   };
 }
 
@@ -347,7 +551,7 @@ function withCompletedDanceArchive(data: AppData, archiveRows: readonly DanceArc
 
 export function writeData(data: AppData) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(syncCurrentSongsToArchive(data)));
 }
 
 export function resetData() {
