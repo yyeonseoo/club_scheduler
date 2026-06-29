@@ -83,6 +83,7 @@ export type ArchiveSong = {
   leaderName: string;
   memberNames: string[];
   durationSeconds?: number;
+  linkedCurrentSongIds?: string[];
   years?: number[];
   source?: string;
   createdAt: string;

@@ -1282,10 +1282,16 @@ function ArchivePanel({ data, currentUser, persist }: { data: AppData; currentUs
     const years = Array.from(new Set(selectedItems.flatMap(({ item }) => archiveYears(item)))).sort();
     const sourceLabels = Array.from(new Set(selectedItems.map(({ item }) => archiveSourceLabel(item))));
     const sources = Array.from(new Set(selectedItems.map(({ item }) => item.source).filter((source): source is string => Boolean(source))));
+    const linkedCurrentSongIds = Array.from(new Set(selectedItems.flatMap(({ item }) => {
+      const directCurrentSong = data.songs.find((song) => item.archiveKey === `current-${song.performanceId}-${song.id}`);
+      return [...(item.linkedCurrentSongIds ?? []), ...(directCurrentSong ? [directCurrentSong.id] : [])];
+    })));
     const mergedItem = {
       ...primary,
+      archiveKey: primary.archiveKey.startsWith("current-") ? `merged-${primary.id}` : primary.archiveKey,
       performanceTitle,
       memberNames,
+      linkedCurrentSongIds,
       years,
       source: sourceLabels.join(" · ") || sources.join(" · ") || primary.source,
       updatedAt: nowIso(),
@@ -1454,7 +1460,20 @@ function ArchivePanel({ data, currentUser, persist }: { data: AppData; currentUs
                 })}
               </div>
             </div>
-            <PrimaryButton className="mt-5" onClick={saveArchiveEdit}>수정 저장</PrimaryButton>
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              <PrimaryButton onClick={saveArchiveEdit}>수정 저장</PrimaryButton>
+              <button
+                type="button"
+                className="rounded-2xl bg-primary/12 px-4 py-3 text-sm font-black text-primary transition hover:bg-primary/20"
+                onClick={() => {
+                  const itemId = editingArchiveId;
+                  setEditingArchiveId("");
+                  beginMerge(itemId);
+                }}
+              >
+                다른 곡과 병합
+              </button>
+            </div>
           </section>
         </div>
       )}

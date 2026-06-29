@@ -228,7 +228,9 @@ function dedupeArchiveSongs(archiveSongs: ArchiveSong[]) {
 
 export function syncCurrentSongsToArchive(data: AppData): AppData {
   const existingByKey = new Map(data.archiveSongs.map((song) => [song.archiveKey, song]));
+  const linkedCurrentSongIds = new Set(data.archiveSongs.flatMap((song) => song.linkedCurrentSongIds ?? []));
   const currentArchives = data.songs.flatMap((song) => {
+    if (linkedCurrentSongIds.has(song.id)) return [];
     const performance = data.performances.find((item) => item.id === song.performanceId);
     if (!performance) return [];
 
