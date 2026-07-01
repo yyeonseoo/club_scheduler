@@ -11,6 +11,7 @@ import {
   ChevronRight,
   ChevronUp,
   ClipboardList,
+  Download,
   KeyRound,
   LogOut,
   Megaphone,
@@ -2528,6 +2529,7 @@ function PerformanceDetailV2({ data, currentUser, performance, persist }: { data
   const [performanceMemberSearch, setPerformanceMemberSearch] = useState("");
   const [songMemberTeamFilter, setSongMemberTeamFilter] = useState("all");
   const [songMemberSearch, setSongMemberSearch] = useState("");
+  const initializedPerformanceId = useRef("");
   const filteredPerformanceUsers = useMemo(() => {
     const keyword = performanceMemberSearch.trim().toLowerCase();
     if (!keyword) return data.users;
@@ -2560,15 +2562,17 @@ function PerformanceDetailV2({ data, currentUser, performance, persist }: { data
   const selectedRuntimeSeconds = songRuntimeSeconds + transitionRuntimeSeconds + runtimeParts.breakSeconds;
 
   useEffect(() => {
+    if (initializedPerformanceId.current === performance.id) return;
+    initializedPerformanceId.current = performance.id;
     setDescription(performance.description ?? "");
     setDraftMemberIds(performance.memberIds ?? []);
     setEditingMembers(false);
     setPerformanceMemberSearch("");
     setSelectedRuntimeSongIds([]);
     setTransitionInput(String(performance.transitionSeconds ?? 5));
-    setBreakAfterSongId(songs.slice().sort((a, b) => a.order - b.order)[0]?.id ?? "");
+    setBreakAfterSongId(data.songs.filter((song) => song.performanceId === performance.id).sort((a, b) => a.order - b.order)[0]?.id ?? "");
     setBreakDuration("10:00");
-  }, [performance.id]);
+  }, [data.songs, performance.description, performance.id, performance.memberIds, performance.transitionSeconds]);
 
   useEffect(() => {
     setSelectedRuntimeSongIds((ids) => {
@@ -2616,6 +2620,62 @@ function PerformanceDetailV2({ data, currentUser, performance, persist }: { data
       }),
     });
     setOrderingSongId(null);
+  }
+
+  async function exportSelectedSetlist() {
+    if (selectedRuntimeSongs.length === 0) return;
+    const XLSX = await import("xlsx-js-style");
+    const selectedMemberNames = Array.from(new Set(selectedRuntimeSongs.flatMap((song) =>
+      data.songMembers
+        .filter((member) => member.songId === song.id)
+        .map((member) => data.users.find((user) => user.id === member.userId)?.name)
+        .filter((name): name is string => Boolean(name)),
+    )));
+    const rows = [
+      ["곡 제목", "소속 팀", "인원", "런타임"],
+      ...selectedRuntimeSongs.map((song) => {
+        const team = data.teams.find((item) => item.id === song.teamId);
+        const memberNames = data.songMembers
+          .filter((member) => member.songId === song.id)
+          .map((member) => data.users.find((user) => user.id === member.userId)?.name)
+          .filter((name): name is string => Boolean(name));
+        return [song.title, team?.name ?? "팀 없음", memberNames.join(", "), formatSongDuration(song.durationSeconds)];
+      }),
+      ["합계", `총 ${selectedRuntimeSongs.length}곡`, `참여 인원 ${selectedMemberNames.length}명`, formatTotalDuration(selectedRuntimeSeconds)],
+    ];
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    worksheet["!cols"] = [{ wch: 23 }, { wch: 11 }, { wch: 44 }, { wch: 14 }];
+    worksheet["!autofilter"] = { ref: `A1:D${rows.length - 1}` };
+    const border = {
+      top: { style: "thin", color: { rgb: "D7E7F2" } },
+      bottom: { style: "thin", color: { rgb: "D7E7F2" } },
+      left: { style: "thin", color: { rgb: "D7E7F2" } },
+      right: { style: "thin", color: { rgb: "D7E7F2" } },
+    };
+
+    for (let column = 0; column < 4; column += 1) {
+      const cell = worksheet[XLSX.utils.encode_cell({ r: 0, c: column })];
+      if (cell) cell.s = { font: { bold: true, color: { rgb: "263342" } }, fill: { fgColor: { rgb: "E8EEF2" } }, alignment: { horizontal: "center", vertical: "center" }, border };
+    }
+    selectedRuntimeSongs.forEach((song, rowIndex) => {
+      const team = data.teams.find((item) => item.id === song.teamId);
+      const rowColor = team?.name === "춤" ? "FFFFFF" : team?.name === "랩" ? "FFF3BF" : team?.name === "기획" ? "E2F5EF" : "F4F7F9";
+      for (let column = 0; column < 4; column += 1) {
+        const cell = worksheet[XLSX.utils.encode_cell({ r: rowIndex + 1, c: column })];
+        if (cell) cell.s = { fill: { fgColor: { rgb: rowColor } }, alignment: { vertical: "center", wrapText: column === 2 }, border };
+      }
+    });
+    const totalRowIndex = rows.length - 1;
+    for (let column = 0; column < 4; column += 1) {
+      const cell = worksheet[XLSX.utils.encode_cell({ r: totalRowIndex, c: column })];
+      if (cell) cell.s = { font: { bold: true, color: { rgb: "263342" } }, fill: { fgColor: { rgb: "DDE7EC" } }, alignment: { horizontal: column === 0 ? "center" : "left", vertical: "center" }, border };
+    }
+    worksheet["!rows"] = [{ hpt: 22 }, ...selectedRuntimeSongs.map(() => ({ hpt: 25 })), { hpt: 26 }];
+    const workbook = XLSX.utils.book_new();
+    const sheetName = `${performance.title}_setlist`.replace(/[\\/?*\[\]:]/g, "_").slice(0, 31) || "setlist";
+    XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+    const fileName = `${performance.title}_setlist.xlsx`.replace(/[\\/:*?"<>|]/g, "_");
+    XLSX.writeFile(workbook, fileName);
   }
 
   function togglePerformanceMember(userId: string) {
@@ -2807,6 +2867,16 @@ function PerformanceDetailV2({ data, currentUser, performance, persist }: { data
               <button type="button" className="rounded-xl px-3 py-2 text-xs font-black text-muted-foreground transition hover:bg-white/80" onClick={() => setSelectedRuntimeSongIds(orderedSongs.map((song) => song.id))}>전체</button>
               <button type="button" className="rounded-xl px-3 py-2 text-xs font-black text-muted-foreground transition hover:bg-white/80" onClick={() => setSelectedRuntimeSongIds([])}>해제</button>
             </div>
+            <button
+              type="button"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white/70 text-primary shadow-sm transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-35 dark:bg-white/5"
+              disabled={selectedRuntimeSongs.length === 0}
+              onClick={exportSelectedSetlist}
+              aria-label="선택 곡 셋리스트 엑셀 내보내기"
+              title="선택 곡 셋리스트 엑셀 내보내기"
+            >
+              <Download size={18} />
+            </button>
             <p className="whitespace-nowrap text-xl font-black tabular-nums">{formatTotalDuration(selectedRuntimeSeconds)}</p>
           </div>
         </div>
